@@ -96,14 +96,14 @@ def predict_proba(X, net):
     return f.softmax(y)
 
 
-def model_name(data_name, net_name, auditing_function):
-    sess = net_name + '_' + data_name + '_audit' + str(auditing_function) + '.pth'  # alibi_cifar10_audit0.pth
+def model_name(data_name, net_name, epoch, auditing_function):
+    sess = net_name + '_epo' + str(epoch) + '_' + data_name + '_audit' + str(auditing_function) + '.pth'  # result/model/alibi_epo10_cifar10_audit0.pth
     return sess
 
 
-def attacker_name(data_name, net_name, auditing_function):
-    sess = net_name + '_' + data_name + '_audit' + str(
-        auditing_function) + '.pkl'  # alibi_cifar10_audit0.pth， net为训练target模型，而不是attacker模型
+def attacker_name(data_name, net_name, epoch, auditing_function):
+    sess = net_name + '_epo' + str(epoch) + '_' + data_name + '_audit' + str(
+        auditing_function) + '.pkl'  # result/attacker/alibi_epo10_cifar10_audit0.pkl， net为训练target模型，而不是attacker模型
     return sess
 
 

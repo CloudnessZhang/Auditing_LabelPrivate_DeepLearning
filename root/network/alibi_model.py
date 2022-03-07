@@ -92,7 +92,7 @@ class RandomizedLabelPrivacy:
             noise.exponential_(ROOT2 / self.sigma, generator=self.randomizer)
             tmp.exponential_(ROOT2 / self.sigma, generator=self.randomizer)
             noise = noise - tmp
-        return noise.to(self.device)
+        return noise
 
     @property
     def privacy(self):
@@ -124,7 +124,7 @@ class NoisedCIFAR():
         print("the ratio of label change is ", self.label_change)
 
     def _noise(self, label, n):
-        onehot = torch.zeros(n).to(self.rlp.device)
+        onehot = torch.zeros(n).to()
         onehot[label] = 1
         rand = self.rlp.noise((n,))
         return onehot if rand is None else onehot + rand
@@ -447,7 +447,7 @@ class Ohm:
         onto a probabilistic simplex following the same notations as
         Algorithm 4 from our paper.
         """
-        o = in_vec.clone().cpu()
+        o = in_vec.clone()
         B, C = o.shape
         s, _ = torch.sort(o, dim=1, descending=True)
         cumsum = torch.cumsum(s, dim=1)
@@ -489,7 +489,7 @@ class ALIBI:
             widen_factor=8 if self.num_classes == 100 else 4,
             dropout=0,
             num_classes=self.num_classes,
-        ).to(self.device)
+        )
 
     def _criterion(self):
         self.criterion = Ohm(
@@ -512,6 +512,7 @@ class ALIBI:
 
     def _train(self, model, train_loader, optimizer, criterion):
         model.train()
+        losses = []
         losses = []
         acc = []
         for i, batch in enumerate(tqdm(train_loader)):
@@ -597,6 +598,6 @@ class ALIBI:
 
     def predict_proba(self,X_train):
         net = self.getModel()
-        X = torch.from_numpy(X_train).to(self.device)
+        X = torch.from_numpy(X_train)
         y = net(X)
         return f.softmax(y)

@@ -5,6 +5,7 @@
 import argparse
 import os.path
 
+import numpy as np
 import torch
 from torch.utils.data import Subset
 
@@ -37,51 +38,62 @@ def main(args):
     # 加载数据集D0，D1
     ###########################################################
     num_classes = K_TABLE[args.dataset.lower()]
-    if args.audit_function == 0:  # 基于隐私推理的审计方法
+    if args.audit_function == 1:  # 基于Shadow model的审计方法
         data_factory = DataFactory(which=args.dataset.lower(), data_root=setting.data_dir)
         train_set, test_set = data_factory.get_train_set(), data_factory.get_test_set()
         target_train_set = Subset(train_set, range(0, 25000))
         shadow_train_set = Subset(train_set, range(25000, 50000))
         target_test_set = Subset(test_set, range(0, 5000))
         shadow_test_set = Subset(test_set, range(5000, 10000))
+
         D_0 = target_train_set
         D_1 = target_test_set
-        # train_data_loader = DataLoader(target_train_set,batch_size=10,shuffle=False)
-        # test_data_loader = DataLoader(test_set,batch_size=1)
-        # x_train,y_train,x_test,y_test = [],[],[],[]
-        # for data, label in tqdm(train_data_loader): # 对例如cifar10
-        #     x_train.append(torch.squeeze(data))
-        #     y_train.append(torch.squeeze(label))
-        # for data, label in tqdm(test_data_loader):
-        #     x_test.append(torch.squeeze(data))
-        #     y_test.append(torch.squeeze(label))
-        # x_target_train, x_shadow_train, y_target_train, y_shadow_train = train_test_split(x_train,
-        #                                                                                   y_train,
-        #                                                                                   test_size=0.5)
-        # x_target_test, x_shadow_test, y_target_test, y_shadow_test = train_test_split(x_test, y_test,
-        #                                                                              test_size=0.5)
 
     ###########################################################
     # 在D0数据集上训练模型
     ###########################################################
-    model_path = os.path.join(setting.save_dir, 'model',utils.model_name(args.dataset.lower(), args.net, args.audit_function))
+    # model_path = os.path.join(setting.save_dir, 'model',utils.model_name(args.dataset.lower(), args.net,setting.learning.epochs, args.audit_function))
     #
     # if args.net == 'alibi':
     #     alibi = ALIBI(sess, D_0, num_classes, setting)
     #     model = alibi.train_model()
     #
-    # #保存&读取模型
+    # #保存模型
     # torch.save(model, model_path)
     # print("####################模型训练完毕，已保存~####################")
-    model = torch.load(model_path)  # 读取模型， 可以注释上述训练模型过程，直接使用过去训练完成的模型
+    # 读取模型， 可以注释上述训练模型过程，直接使用之前训练完成的模型
+    x,y = utils.get_data_targets(D_0)
+    x = torch.stack(x).to(device)
+    labels = np.array(y)
+
+    model_path1 = os.path.join(setting.save_dir, 'model','alibi_cifar10_audit0.pth')
+    model_path2 = os.path.join(setting.save_dir, 'model','alibi_audit0.pth')
+    model1 = torch.load(model_path1)
+    model2 = torch.load(model_path2)
+
+    output1 = model1(x)
+    preds1 = np.argmax(output1.numpy(), axis=1)
+
+
+    output2 = model2(x)
+    preds2 = np.argmax(output2.numpy(), axis=1)
+
+    # measure accuracy and record loss
+    acc1 = (preds1 == labels).mean()
+
+
+
+    # measure accuracy and record loss
+    acc2 = (preds2 == labels).mean()
+
     print("####################模型加载完毕~今天也要加油呀！####################")
 
     ###########################################################
     # 生成二分类器
     ###########################################################
-    attaker_path = os.path.join(setting.save_dir, 'attacker', utils.attacker_name(args.dataset.lower(), args.net, args.audit_function))
+    attaker_path = os.path.join(setting.save_dir, 'attacker', utils.attacker_name(args.dataset.lower(), args.net, setting.learning.epochs, args.audit_function))
 
-    if args.audit_function == 0:  # 基于隐私推理的审计方法
+    if args.audit_function == 1:  # 基于Shadow model的审计方法
         alibi_shadow = ALIBI(sess, None, num_classes, setting)
         shm = shadow_model.ShadowModels(shadow_train_set, shadow_test_set, n_models=6,
                            target_classes=num_classes, learner=alibi_shadow,
@@ -93,16 +105,16 @@ def main(args):
 
         # 保存attacker
         utils.save_Class(attacker,attaker_path)
-        # # 读取attacker
+        # # 读取attacker， 可以注释上述训练模型过程，直接使用之前训练完成的模型
         # attacker= attack_model.AttackModels(target_classes=10, attack_learner=rf_attack)
         # attacker = utils.read_Class(attacker,attaker_path)
 
     # ###########################################################
     # # 计算ε的经验下界
     # ###########################################################
-
-    T = attacker, D_0, D_1, model,
-    setting.audit_result.epsilon_LB = lowerbound_mi.eps_LB_Shadow(D_0, D_1, model, T)
+    if args.audit_function == 1:  # 基于Shadow model的审计方法
+        T = attacker, D_0, D_1, model,
+        setting.audit_result.epsilon_LB = lowerbound_mi.eps_LB_Shadow(D_0, D_1, model, T)
     ####暂时测试
     # Base MI
     T = base_MI(D_0, model)
@@ -123,10 +135,11 @@ if __name__ == "__main__":
     parser.add_argument('--eps', default=0, type=float, help='privacy parameter epsilon')
     parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')
     parser.add_argument('--sigma', default=1, type=float, help='Guassion or Laplace perturbation coefficient')
-    parser.add_argument('--audit_function', default=0, type=bool, help='the function of auditing，'
-                                                                       '0：based inference attack，'
-                                                                       '1：based poisoning attacked,'
-                                                                       ' 2: combined')
+    parser.add_argument('--audit_function', default=1, type=bool, help='the function of auditing:'
+                                                                       '0：based simple inference attack,'
+                                                                       '1: based shadow model inference attack,'
+                                                                       '2：based poisoning attacked,'
+                                                                       '3: combined 1 and 2')
 
     args = parser.parse_args()
 
