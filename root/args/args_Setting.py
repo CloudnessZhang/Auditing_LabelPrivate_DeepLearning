@@ -9,12 +9,12 @@ from dataclasses import dataclass
 class Audit_result:
     audit_function : int = 0
     epsilon_theory: float = .0
-    epsilon_LB: float =.0
-    epsilon_OPT: float =.0
-    model_Accuary: float =.0
-    model_Loss:float =.0
-    inference_Accuary: float =.0
-    Poisoning_Effect: float =.0
+    epsilon_lb: float =.0
+    epsilon_opt: float =.0
+    model_accuary: float =.0
+    model_loss:float =.0
+    inference_accuary: float =.0
+    poisoning_effect: float =.0
 
 ###########################################################
 # ALIBI args

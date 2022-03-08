@@ -38,9 +38,6 @@ def make_deterministic(seed):
 
 
 def get_sess(args):
-    if args.resume:
-        return f"Resume: {args.dataset}_eps{args.eps}_delta{args.delta}_sigma{args.sigma}_auditMethod{args.audit_function}"
-    else:
         return f"{args.dataset}_eps{args.eps}_delta{args.delta}_sigma{args.sigma}_auditMethod{args.audit_function}"
 
 
@@ -93,9 +90,17 @@ def clopper_pearson(count, trials, conf):
 
 
 def predict_proba(X, net):
+
+    Xloader = DataLoader(X,128,shuffle=False)
+
     with torch.no_grad():
-        y = net(X)
-    return f.softmax(y)
+        for i, x_batch in enumerate(Xloader):
+            y = f.softmax(net(x_batch))
+            if i == 0:
+                y_prob = y
+            else:
+                y_prob = torch.cat((y_prob,y),dim=0)
+    return y_prob
 
 
 def save_name(data_name, net_name, epoch, eps_theory, auditing_function, pois_num=0):
@@ -111,19 +116,6 @@ def save_name(data_name, net_name, epoch, eps_theory, auditing_function, pois_nu
 
     sess = sess + net_name + '_epsTheory' + str(eps_theory) + '_epo' + str(epoch) + '_' + data_name
     return sess
-    #
-    # def model_name(data_name, net_name, epoch, eps_theory, auditing_function, pois_num):
-    #     sess = net_name + '_epo' + str(epoch) + '_' + data_name + '_audit' + str(
-    #         auditing_function) + '.pth'  # result/model/alibi_epo10_cifar10_audit0.pth
-    #     return sess
-    #
-    # def attacker_name(data_name, net_name, epoch, eps_theory, auditing_function):
-    #     sess = net_name + '_epo' + str(epoch) + '_' + data_name + '_audit' + str(
-    #         auditing_function) + '.pickle'  # result/attacker/alibi_epo10_cifar10_audit0.pkl， net为训练target模型，而不是attacker模型
-    #     return sess
-    #
-    # def audit_result_name(data_name, net_name, epoch, eps_theory, audit_function):
-
 
 def save_Class(class_sv, path):
     out_put = open(path, 'wb')

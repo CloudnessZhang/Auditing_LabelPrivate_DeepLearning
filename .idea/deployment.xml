@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="zyx_8080" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true">
+  <component name="PublishConfigData" autoUpload="Always" serverName="zyx_8080" uploadOnCheckin="b5965a69-29e5-450e-90f9-7f10c967e521" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true">
     <serverData>
       <paths name="zyx_22">
         <serverdata>
@@ -24,6 +24,7 @@
         </serverdata>
       </paths>
     </serverData>
+    <option name="myUploadOnCheckinName" value="zyx_8080" />
     <option name="myAutoUpload" value="ALWAYS" />
   </component>
 </project>

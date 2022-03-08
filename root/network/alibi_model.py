@@ -605,9 +605,9 @@ class ALIBI:
         # DEFINE OPTIMIZER
         optimizer = self.optimizer
         # label differential privacy
-        train_set = self._label_dp()
+        self.trainset = self._label_dp()
         train_loader = data.DataLoader(
-            train_set,
+            self.trainset,
             batch_size=setting.learning.batch_size,
             shuffle=True,
             drop_last=True,

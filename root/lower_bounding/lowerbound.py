@@ -15,11 +15,11 @@ def eps_MI(count, T):
     # 计算ε_LB
     if acc_low == 0.5 or acc_low == 0.5:
         return 0
-    elif acc_low == 1 or acc_high == 1:
-        return np.inf
-    else:
-        eps_low = np.log(acc_low / (1 - acc_low))
-        eps_high = np.log(acc_high / (1 - acc_high))
+    if acc_low == 1 or acc_high == 1:
+        acc_low = min(acc_low,acc_high)
+        acc_high = min(acc_low,acc_high)
+    eps_low = np.log(acc_low / (1 - acc_low))
+    eps_high = np.log(acc_high / (1 - acc_high))
     return max(eps_low, eps_high)
 
 
@@ -31,26 +31,27 @@ class LowerBound:
         self.audit_func = audit_function
         self.eps_OPT :float =.0
         self.eps_LB :float =.0
-        self.inference_Accuary :float =.0
-        self.poisoning_Effect :float =.0
+        self.inference_accuary :float =.0
+        self.poisoning_effect :float =.0
 
         self._epslb(D_trn, D_tst, model, T)
 
     def _epslb(self, D_trn, D_tst, model, T):
         if self.audit_func == 0:
             self.EPS_LB = EPS_LB_SmipleMI(D_trn, D_tst, model, T)
-            self.inference_Accuary = self.EPS_LB.inference_acc
+            self.inference_accuary = self.EPS_LB.inference_acc
         elif self.audit_func == 1:
             self.EPS_LB = EPS_LB_SHADOWMI(D_trn, D_tst, model, T)
+            self.inference_accuary = self.EPS_LB.inference_acc
         # elif self.audit_func == 2:
-        #     self.poisoning_Effect = self.EPS_LB.poisoning_effect
+            # self.poisoning_Effect = self.EPS_LB.poisoning_effect
 
         self.eps_OPT= self.EPS_LB.eps_OPT
         self.eps_LB = self.EPS_LB.eps_LB
 
 
 ###########################################################
-# 利用基于平均loss的BaseMI， 计算epsilon的下界
+# 利用基于平均softmax后的 loss的BaseMI， 计算epsilon的下界
 ###########################################################
 class EPS_LB_SmipleMI:
     def __init__(self, D_trn, D_tst, model, T):
@@ -60,7 +61,7 @@ class EPS_LB_SmipleMI:
         self.T = T
         self._eps_LB()
 
-    def eps_LB(self):
+    def _eps_LB(self):
         count_sum = len(self.D_trn) + len(self.D_tst)
         self.eps_OPT = eps_MI(count_sum, count_sum)
 
