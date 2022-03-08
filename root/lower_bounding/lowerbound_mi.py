@@ -7,13 +7,14 @@ from binary_classifier.inference.attack_model import AttackModels
 from binary_classifier.inference import base_MI
 
 
-def MI_in_train(y, predict, T):
-    res_in = T.predict(predict, y, batch=True)
-    return np.sum(res_in)
+def MI_in_train(y, pr, T):
+    res_in = T.predict(pr.cpu(), y.cpu(), batch=True)
+    count = np.sum(np.argmax(res_in,axis=1))
+    return count
 
 
-def MI_out_train(y, predict, T):
-    return len(y) - MI_in_train(y, predict, T)
+def MI_out_train(y, pr, T):
+    return len(y) - MI_in_train(y, pr, T)
 
 
 def eps_MI(count, T):
@@ -24,7 +25,7 @@ def eps_MI(count, T):
     if acc_low == 0.5 or acc_low == 0.5:
         return 0
     elif acc_low == 1 or acc_high == 1:
-        return 1
+        return np.inf
     else:
         eps_low = np.log(acc_low / (1 - acc_low))
         eps_high = np.log(acc_high / (1 - acc_high))
@@ -43,19 +44,8 @@ def eps_LB_Shadow(D_trn, D_tst, model, T):
     # 基于影子模型隐私推理
     count = MI_in_train(trn_y, predict_train, T) + MI_out_train(tst_y, predict_test, T)
     # 计算ε_LB
-    eps1 = eps_MI(count, len(D_trn) + len(D_tst))
-
-    ##############################################
-    # D_train,D_test 大小相同
-    #################################################
-    D_trn_new = Subset(D_trn, range(0, len(D_tst)))
-    trn_x_new, trn_y_new = get_data_targets(D_trn_new)
-    predict_trn_new = predict_proba(trn_x_new,model)
-    # 基于影子模型隐私推理
-    count_new = MI_in_train(trn_y_new, predict_trn_new, T) + MI_out_train(tst_y, predict_test, T)
-    # 计算ε_LB
-    eps2 = eps_MI(count_new, len(D_trn_new) + len(D_tst))
-    return eps1, eps2
+    eps = eps_MI(count, len(D_trn) + len(D_tst))
+    return eps
 
 
 def eps_LB_BaseMI(D_trn, D_tst, model, T):

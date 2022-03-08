@@ -9,6 +9,7 @@ from torchvision import transforms
 import ssl
 
 from torchvision.datasets.utils import check_integrity
+import utils
 
 ssl._create_default_https_context = ssl._create_unverified_context  # 解决cifar10下载报错问题
 
@@ -155,3 +156,79 @@ class DataFactory:
                 transform=CIFAR100_TRANS if self.transform is None else self.transform
             )
         return train_dataset
+
+def _poised_pos_and_labels(dataset, N, seed=None):
+    # 返回投毒的位置和投毒的样本
+    labels, targets = utils.get_data_targets(dataset)
+    np.random.seed(seed)
+    rand_positions = np.random.choice(len(dataset.data), N, replace=False)
+    poised_labels = []
+    # 获取随机被中毒的x,y
+    y = targets[rand_positions]
+    x = labels[rand_positions]
+    # 构造投毒样本new_y
+    pr = utils.predict_proba(x)
+    new_y = torch.argsort(pr,dim=1)[-2]
+    new_y[torch.argmax(pr,dim=1)!= y] = torch.argmax(pr,dim=1)
+    poised_labels.append(new_y)
+    return rand_positions, poised_labels
+
+def fill_poisoned_ran(dataset, N, net, seed=None):
+    """
+    返回数据集，其中随机“N”个样本根据先验知识prior设计投毒label
+    """
+    pois_positions, pois_labels = _poised_pos_and_labels(
+        dataset, N, seed=seed
+    )
+
+    pois_positions = np.asarray(pois_positions)
+    pois_labels = np.asarray(pois_labels)
+
+    targets = np.asarray(dataset.targets)
+    targets[pois_positions] = pois_labels
+
+    dataset.targets = list(targets)
+
+    return dataset
+
+def poisoned_ran(D,model,pois_num):
+    """ 在D中随机选取poisnum个样本，针对label进行投毒
+    y_p=argmax(pr) if argmax(pr)≠y_p else argsort(pr)[-2]
+    """
+    net = model.train_model(D)
+    assert 0<=pois_num<=len(D), "Poisoning num out of range"
+    len = len(D)
+    D_poisoned = fill_poisoned_ran(D, N=pois_num, net=net, seed=11337)
+
+    # capture debug info
+    original_label_sum = sum(D.targets)
+    poised_label_sum = sum(D_poisoned.targets)
+    original_last10_labels = [D[-i][1] for i in range(1, 11)]
+    poised_last10_labels = [D_poisoned[-i][1] for i in range(1, 11)]
+    # verify presence 如果：target值之和不变说明，插入失败
+    if original_label_sum == poised_label_sum:
+        raise Exception(
+            "Canary infiltration has failed."
+            f"\nOriginal label sum: {original_label_sum} vs"
+            f" Canary label sum: {poised_label_sum}"
+            f"\nOriginal last 10 labels: {original_last10_labels} vs"
+            f" Canary last 10 labels: {poised_last10_labels}"
+        )
+    return D_poisoned
+
+# def rand_pos_and_labels(trainset, N, seed=None):
+#     """
+#     Selects `N` random positions in the training set and `N` corresponding
+#     random incorrect labels.
+#     恢复训练集中的使用N个随机canaries的数据集
+#     """
+#     np.random.seed(seed)
+#     num_classes = len(trainset.classes)
+#     rand_positions = np.random.choice(len(trainset.data), N, replace=False)
+#     rand_labels = []
+#     for idx in rand_positions:
+#         y = trainset.targets[idx]
+#         new_y = np.random.choice(list(set(range(num_classes)) - {y}))
+#         rand_labels.append(new_y)
+#
+#     return rand_positions, rand_labels

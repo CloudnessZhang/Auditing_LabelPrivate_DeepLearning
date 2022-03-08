@@ -9,8 +9,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
 from sklearn.base import clone, BaseEstimator
-
-from utils import Normal_Dataset,get_data_targets
+from utils import Normal_Dataset,get_data_targets,predict_proba
 
 #
 # try:
@@ -19,6 +18,7 @@ from utils import Normal_Dataset,get_data_targets
 #     import warnings
 #
 #     warnings.warn("Tensorflow is not installed")
+
 
 
 class ShadowModels:
@@ -67,6 +67,8 @@ class ShadowModels:
         self.n_models = n_models
         self.train_set = train_set
         self.test_set = test_set
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
         # if self.X_train.ndim > 1:
         #     # flatten images or matrices inside 1rst axis
         #     self.X_train = self.X_train.reshape(self.X_train.shape[0], -1)
@@ -98,18 +100,17 @@ class ShadowModels:
         # Split by class
         for clss in classes:
             # targets = [cifar.dataset.targets[i] for i in cifar.indices]
-            inds = np.where(np.array(targets) == clss)
-            X_clss = np.array(data)[inds]
-            y_clss = np.array(targets)[inds]
-            X_clss = torch.stack(X_clss.tolist(), 0)
+            X_clss = data[targets == clss]
+            y_clss = targets[targets == clss]
             batch_size = len(X_clss) // n_splits
             splits_X = []
             splits_y = []
+            splits = []
             for i in range(n_splits):
                 split_X = X_clss[i * batch_size: (i + 1) * batch_size, :]
                 split_y = y_clss[i * batch_size: (i + 1) * batch_size]
-                splits_X.append(split_X)
-                splits_y.append(split_y)
+                splits_X.append(split_X.cpu())
+                splits_y.append(split_y.cpu())
             class_partitions_X.append(splits_X)
             class_partitions_y.append(splits_y)
 
@@ -166,17 +167,21 @@ class ShadowModels:
         for model, X_train, y_train, X_test, y_test in tqdm_notebook(
                 zip(self.models, self.train_splits[0], self.train_splits[1], self.test_splits[0], self.test_splits[1])):
             model.set_trainset(Normal_Dataset((X_train, y_train)))
-            # model.train_model() #暂时
+            net = model.train_model()
 
             # data IN training set labeled 1
+            X_train = torch.tensor(X_train).to(self.device)
             y_train = y_train.reshape(-1, 1)
-            predict_in = model.predict_proba(X_train) #predict(data), (n_samples, n_classes)
-            res_in = np.hstack((predict_in.detach().numpy(), y_train, np.ones_like(y_train)))
+
+
+            predict_in = predict_proba(X_train, net) #predict(data), (n_samples, n_classes)
+            res_in = np.hstack((predict_in.cpu(), y_train, np.ones_like(y_train)))
 
             # data OUT of training set, labeled 0
+            X_test = torch.tensor(X_test).to(self.device)
             y_test = y_test.reshape(-1, 1)
-            predict_out = model.predict_proba(X_test)
-            res_out = np.hstack((predict_out.detach().numpy(), y_test, np.zeros_like(y_test)))
+            predict_out = predict_proba(X_test,net)
+            res_out = np.hstack((predict_out.cpu(), y_test, np.zeros_like(y_test)))
 
             # concat in single array
             model_results = np.vstack((res_in, res_out))

@@ -14,7 +14,7 @@ warnings.filterwarnings("ignore")
 
 
 class AttackModels:
-    def __init__(self, target_classes, attack_learner):
+    def __init__(self, target_classes=None, attack_learner=None)-> None:
         """
         Attacker models to learn class membership from shadow data.
 
@@ -37,7 +37,8 @@ class AttackModels:
         self.target_classes = target_classes
         self.attack_learner = attack_learner
         # 1 model for each class
-        self.attack_models = [clone(self.attack_learner) for _ in range(target_classes)]
+        if attack_learner is not None:
+            self.attack_models = [clone(self.attack_learner) for _ in range(target_classes)]
 
         self._fited = False
 

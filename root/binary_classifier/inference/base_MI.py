@@ -6,12 +6,13 @@ from utils import get_data_targets, predict_proba
 class BaseMI:
     def __init__(
             self,
-            D_train,  # 训练模型的数据集
-            net
+            D_train=None,  # 训练模型的数据集
+            net=None
     ) -> None:
         self.D_train = D_train
         self.net = net
-        self.loss_mean = self._get_mean()
+        if (net is not None) and (D_train is not None):
+          self.loss_mean = self._get_mean()
 
     def _get_mean(self):
         trn_x, trn_y = get_data_targets(self.D_train)

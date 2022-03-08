@@ -5,8 +5,9 @@ from typing import Any, Optional, List
 import numpy as np
 import torch
 import torch.utils.data as data
+import torchvision.models
 from opacus.privacy_analysis import compute_rdp, get_privacy_spent
-from torch import optim
+from torch import optim, nn
 import torch.nn.functional as f
 from scipy.optimize import Bounds, LinearConstraint, minimize
 from torch.backends import cudnn
@@ -124,10 +125,10 @@ class NoisedCIFAR():
         print("the ratio of label change is ", self.label_change)
 
     def _noise(self, label, n):
-        onehot = torch.zeros(n).to()
+        onehot = torch.zeros(n)
         onehot[label] = 1
         rand = self.rlp.noise((n,))
-        return onehot if rand is None else onehot + rand
+        return onehot if rand is None else onehot.to(self.rlp.device) + rand
 
     def __len__(self):
         return self.cifar.__len__()
@@ -484,12 +485,9 @@ class ALIBI:
         return self.model
 
     def _model(self):
-        self.model = model.wideresnet(
-            depth=28,
-            widen_factor=8 if self.num_classes == 100 else 4,
-            dropout=0,
-            num_classes=self.num_classes,
-        )
+        net = torchvision.models.resnet18()
+        net.fc = nn.Linear(net.fc.in_features,self.num_classes)
+        self.model = net.to(self.device)
 
     def _criterion(self):
         self.criterion = Ohm(
@@ -580,7 +578,7 @@ class ALIBI:
         cudnn.benchmark = True
 
         csv_list = []
-        for epoch in range(setting.learning.epochs):
+        for epoch in range(1): # 暂时
             self._adjust_learning_rate(optimizer, epoch, setting.learning.lr)
 
             self.randomized_label_privacy.train()
@@ -598,6 +596,8 @@ class ALIBI:
 
     def predict_proba(self,X_train):
         net = self.getModel()
-        X = torch.from_numpy(X_train)
-        y = net(X)
+        X = torch.from_numpy(X_train).to(self.device)
+        torch.cuda.empty_cache()
+        with torch.no_grad():
+                y = net(X)
         return f.softmax(y)

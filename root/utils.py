@@ -14,6 +14,8 @@ import torch.nn.functional as f
 
 from torchvision import transforms
 
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
 
 class Normal_Dataset(Dataset):
     def __init__(self, Numpy_Dataset):
@@ -68,8 +70,7 @@ def get_data_targets(dataset: Subset):
     for i, (data, label) in enumerate(data_loader):
         x.append(torch.squeeze(data))
         y.append(torch.squeeze(label))
-
-    return x, y
+    return torch.stack(x).to(device), torch.tensor(y).to(device)
 
 
 data_factory = DataFactory(which='mnist', data_root='../datasets')
@@ -92,7 +93,8 @@ def clopper_pearson(count, trials, conf):
 
 
 def predict_proba(X, net):
-    y = net(torch.stack(X))
+    with torch.no_grad():
+        y = net(X)
     return f.softmax(y)
 
 
@@ -103,7 +105,7 @@ def model_name(data_name, net_name, epoch, auditing_function):
 
 def attacker_name(data_name, net_name, epoch, auditing_function):
     sess = net_name + '_epo' + str(epoch) + '_' + data_name + '_audit' + str(
-        auditing_function) + '.pkl'  # result/attacker/alibi_epo10_cifar10_audit0.pkl， net为训练target模型，而不是attacker模型
+        auditing_function) + '.pickle'  # result/attacker/alibi_epo10_cifar10_audit0.pkl， net为训练target模型，而不是attacker模型
     return sess
 
 
@@ -115,6 +117,7 @@ def save_Class(class_sv, path):
 
 
 def read_Class(class_rd, path):
-    with open(path, 'rb') as file:
-        class_rd = pickle.loads(file.read())
+    in_f = open(path, 'rb')
+    class_rd = pickle.load(in_f)
+    in_f.close()
     return class_rd
