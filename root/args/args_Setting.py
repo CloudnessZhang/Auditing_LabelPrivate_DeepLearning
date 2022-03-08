@@ -6,12 +6,15 @@ from dataclasses import dataclass
 ###########################################################
 
 @dataclass
-class Epsilon_Bound:
-    epsilon_theory: float
-    epsilon_LB: float
-    epsilon_OPT: float
-    epsilon_infer: float
-
+class Audit_result:
+    audit_function : int = 0
+    epsilon_theory: float = .0
+    epsilon_LB: float =.0
+    epsilon_OPT: float =.0
+    model_Accuary: float =.0
+    model_Loss:float =.0
+    inference_Accuary: float =.0
+    Poisoning_Effect: float =.0
 
 ###########################################################
 # ALIBI args
@@ -40,14 +43,11 @@ class ALIBI_Learning:
 @dataclass
 class ALIBI_Settings:
     dataset: str = "cifar100"
-    canary: int = 0
-    arch: str = "wide-resnet"
+    pois_num: int = 1000
+    arch: str = "resnet"
     privacy: ALIBI_LabelPrivacy = ALIBI_LabelPrivacy()
     learning: ALIBI_Learning = ALIBI_Learning()
-    gpu: int = -1
-    world_size: int = 1
     save_dir: str = "../result"
     data_dir: str = "../datasets"
     checkpoint_dir: str = "../checkpoint/"
     seed: int = 11337
-    audit_result = Epsilon_Bound

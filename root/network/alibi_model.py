@@ -11,6 +11,7 @@ from torch import optim, nn
 import torch.nn.functional as f
 from scipy.optimize import Bounds, LinearConstraint, minimize
 from torch.backends import cudnn
+from torch.utils.data import Subset
 from tqdm import tqdm
 
 from args.args_Setting import ALIBI_Settings
@@ -109,10 +110,12 @@ class NoisedCIFAR():
     ):
         self.cifar = cifar
         self.rlp = randomized_label_privacy
-        if isinstance(cifar,Normal_Dataset):
+        if isinstance(cifar, Normal_Dataset):
             targets = cifar.target_tensor
+        elif isinstance(cifar, Subset):
+            targets = [cifar.dataset.targets[i] for i in cifar.indices]
         else:
-          targets = [cifar.dataset.targets[i] for i in cifar.indices]
+            targets = cifar.targets
         self.soft_targets = [self._noise(t, num_classes) for t in targets]
         self.rlp.increase_budget()  # increase budget
         print("privacy budget is", self.rlp.privacy)
@@ -136,6 +139,9 @@ class NoisedCIFAR():
     def __getitem__(self, index):
         image, label = self.cifar.__getitem__(index)
         return image, self.soft_targets[index], label
+
+    def get_eps(self):
+        return self.rlp.eps
 
 
 ###########################################################
@@ -465,9 +471,9 @@ class Ohm:
 # 核心：ALIBI
 ###########################################################
 class ALIBI:
-    def __init__(self, sess, trainset, num_classes=10, setting=ALIBI_Settings):
-        self.sess = sess
+    def __init__(self, trainset, test_set, num_classes=10, setting=ALIBI_Settings):
         self.trainset = trainset
+        self.testset = test_set
         self.setting = setting
         self.num_classes = num_classes
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -477,16 +483,16 @@ class ALIBI:
             mechanism=self.setting.privacy.mechanism,
             device=self.device,
         )
+        self.acc :float = .0
+        self.loss:float = .0
         self._model()
         self._criterion()
         self._optimizer()
 
-    def getModel(self):
-        return self.model
 
     def _model(self):
         net = torchvision.models.resnet18()
-        net.fc = nn.Linear(net.fc.in_features,self.num_classes)
+        net.fc = nn.Linear(net.fc.in_features, self.num_classes)
         self.model = net.to(self.device)
 
     def _criterion(self):
@@ -508,7 +514,7 @@ class ALIBI:
         trainset = NoisedCIFAR(self.trainset, self.num_classes, self.randomized_label_privacy)
         return trainset
 
-    def _train(self, model, train_loader, optimizer, criterion):
+    def _train(self, model, train_loader, optimizer, criterion, epoch):
         model.train()
         losses = []
         losses = []
@@ -535,6 +541,41 @@ class ALIBI:
             loss.backward()
             optimizer.step()
         self.model = model
+        print(
+            f"Train epoch {epoch}:",
+            f"Loss: {np.mean(losses):.6f} ",
+            f"Acc: {np.mean(acc) :.6f} ",
+        )
+        return np.mean(acc), np.mean(losses)
+
+    def _test(self, model, test_loader, criterion, epoch):
+        model.eval()
+        losses = []
+        acc = []
+
+        with torch.no_grad():
+            for images, target in tqdm(test_loader):
+                images = images.to(self.device)
+                target = target.to(self.device)
+
+                output = model(images)
+                loss = criterion(output, target)
+                preds = np.argmax(output.detach().cpu().numpy(), axis=1)
+                labels = target.detach().cpu().numpy()
+                acc1 = (preds == labels).mean()
+
+                losses.append(loss.item())
+                acc.append(acc1)
+
+        print(
+            f"Test epoch {epoch}:",
+            f"Loss: {np.mean(losses):.6f} ",
+            f"Acc: {np.mean(acc) :.6f} ",
+        )
+        if(np.mean(acc) > self.acc):
+            self.acc = np.mean(acc)
+        if(np.mean(losses) < self.loss or self.loss==.0):
+            self.loss = np.mean(losses)
         return np.mean(acc), np.mean(losses)
 
     def _adjust_learning_rate(self, optimizer, epoch, lr):
@@ -557,9 +598,6 @@ class ALIBI:
             os.mkdir(self.setting.checkpoint_dir)
         torch.save(state, self.setting.checkpoint_dir + sess + '.ckpt')
 
-    def set_trainset(self, train_set):
-        self.trainset = train_set
-
     def train_model(self):
         setting = self.setting
         # DEFINE LOSS FUNCTION (CRITERION)
@@ -575,29 +613,43 @@ class ALIBI:
             drop_last=True,
         )
 
+        test_loader = data.DataLoader(
+            self.testset,
+            batch_size=setting.learning.batch_size,
+            shuffle=False
+        )
+
         cudnn.benchmark = True
 
-        csv_list = []
-        for epoch in range(1): # 暂时
+        for epoch in range(setting.learning.epochs):
             self._adjust_learning_rate(optimizer, epoch, setting.learning.lr)
-
             self.randomized_label_privacy.train()
             assert isinstance(criterion, Ohm)  # double check!
 
             # train for one epoch
-            acc, loss = self._train(self.model, train_loader, optimizer, criterion)
-            print("while epoch=", epoch)
-            print("acc=", acc, "loss=", loss)
-
-            csv_list.append((epoch, loss, acc))  # csv_list结果保存文件
-            # checkpoint
-            self._checkpoint(self.model, acc, epoch, csv_list, self.sess)
+            acc, loss = self._train(self.model, train_loader, optimizer, criterion, epoch)
+            # evaluate on validation set
+            if self.randomized_label_privacy is not None:
+                self.randomized_label_privacy.eval()
+            acc, loss = self._test(self.model, test_loader, criterion, epoch)
         return self.model
 
-    def predict_proba(self,X_train):
+    def predict_proba(self, X_train):
         net = self.getModel()
         X = torch.from_numpy(X_train).to(self.device)
         torch.cuda.empty_cache()
         with torch.no_grad():
-                y = net(X)
+            y = net(X)
         return f.softmax(y)
+
+    def get_eps(self):
+        if isinstance(self.trainset, NoisedCIFAR):
+            return self.trainset.get_eps()
+        else:
+            return None
+
+    def getModel(self):
+        return self.model
+
+    def set_trainset(self, train_set):
+        self.trainset = train_set

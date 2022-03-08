@@ -98,15 +98,31 @@ def predict_proba(X, net):
     return f.softmax(y)
 
 
-def model_name(data_name, net_name, epoch, auditing_function):
-    sess = net_name + '_epo' + str(epoch) + '_' + data_name + '_audit' + str(auditing_function) + '.pth'  # result/model/alibi_epo10_cifar10_audit0.pth
-    return sess
+def save_name(data_name, net_name, epoch, eps_theory, auditing_function, pois_num=0):
+    # Based Average Accuracy Rate
+    if auditing_function == 0:
+        sess = 'BaseSimpleMI_'
+    elif auditing_function == 1:
+        sess = 'BasedShadowMI_'
+    elif auditing_function == 2:
+        sess = 'BaseRandomPoisoned_poisNum' + str(pois_num) + '_'
+    else:
+        sess = 'BasedBackdoorPoisoned_poisNum' + str(pois_num) + '_'
 
-
-def attacker_name(data_name, net_name, epoch, auditing_function):
-    sess = net_name + '_epo' + str(epoch) + '_' + data_name + '_audit' + str(
-        auditing_function) + '.pickle'  # result/attacker/alibi_epo10_cifar10_audit0.pkl， net为训练target模型，而不是attacker模型
+    sess = sess + net_name + '_epsTheory' + str(eps_theory) + '_epo' + str(epoch) + '_' + data_name
     return sess
+    #
+    # def model_name(data_name, net_name, epoch, eps_theory, auditing_function, pois_num):
+    #     sess = net_name + '_epo' + str(epoch) + '_' + data_name + '_audit' + str(
+    #         auditing_function) + '.pth'  # result/model/alibi_epo10_cifar10_audit0.pth
+    #     return sess
+    #
+    # def attacker_name(data_name, net_name, epoch, eps_theory, auditing_function):
+    #     sess = net_name + '_epo' + str(epoch) + '_' + data_name + '_audit' + str(
+    #         auditing_function) + '.pickle'  # result/attacker/alibi_epo10_cifar10_audit0.pkl， net为训练target模型，而不是attacker模型
+    #     return sess
+    #
+    # def audit_result_name(data_name, net_name, epoch, eps_theory, audit_function):
 
 
 def save_Class(class_sv, path):
