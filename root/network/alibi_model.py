@@ -471,9 +471,9 @@ class Ohm:
 # 核心：ALIBI
 ###########################################################
 class ALIBI:
-    def __init__(self, trainset, test_set, num_classes=10, setting=ALIBI_Settings):
+    def __init__(self, trainset, testset, num_classes=10, setting=ALIBI_Settings):
         self.trainset = trainset
-        self.testset = test_set
+        self.testset = testset
         self.setting = setting
         self.num_classes = num_classes
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -554,7 +554,7 @@ class ALIBI:
         acc = []
 
         with torch.no_grad():
-            for images, target in tqdm(test_loader):
+            for i, (images, target) in enumerate(test_loader):
                 images = images.to(self.device)
                 target = target.to(self.device)
 
@@ -634,6 +634,35 @@ class ALIBI:
             acc, loss = self._test(self.model, test_loader, criterion, epoch)
         return self.model
 
+    def train_model_without_test(self):
+        setting = self.setting
+        # DEFINE LOSS FUNCTION (CRITERION)
+        criterion = self.criterion
+        # DEFINE OPTIMIZER
+        optimizer = self.optimizer
+        # label differential privacy
+        self.trainset = self._label_dp()
+        train_loader = data.DataLoader(
+            self.trainset,
+            batch_size=setting.learning.batch_size,
+            shuffle=True,
+            drop_last=True,
+        )
+
+        cudnn.benchmark = True
+
+        for epoch in range(setting.learning.epochs):
+            self._adjust_learning_rate(optimizer, epoch, setting.learning.lr)
+            self.randomized_label_privacy.train()
+            assert isinstance(criterion, Ohm)  # double check!
+
+            # train for one epoch
+            acc, loss = self._train(self.model, train_loader, optimizer, criterion, epoch)
+            # evaluate on validation set
+            if self.randomized_label_privacy is not None:
+                self.randomized_label_privacy.eval()
+        return self.model
+
     def predict_proba(self, X_train):
         net = self.getModel()
         X = torch.from_numpy(X_train).to(self.device)
@@ -648,8 +677,19 @@ class ALIBI:
         else:
             return None
 
+    def predict(self, X_train):
+        net = self.getModel()
+        X = torch.from_numpy(X_train).to(self.device)
+        torch.cuda.empty_cache()
+        with torch.no_grad():
+            y = np.argmax(net(X).detach().cpu().numpy(), axis=1)
+        return y
+
     def getModel(self):
         return self.model
 
     def set_trainset(self, train_set):
         self.trainset = train_set
+
+    def set_testset(self, test_set):
+        self.testset = test_set

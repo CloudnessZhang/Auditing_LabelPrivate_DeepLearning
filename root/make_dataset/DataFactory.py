@@ -1,5 +1,6 @@
 import os
 import pickle
+import random
 
 import numpy as np
 import torch
@@ -137,7 +138,7 @@ class DataFactory:
 # 生成被投毒的数据集
 ###########################################################
 class Poised_Dataset:
-    def __init__(self, seed = 11337, D=None, model=None, pois_num=None, pois_func=None):
+    def __init__(self, seed = 11337, D=None, model=None, pois_num=None, pois_func=1):
         self.seed = seed
         self.ori_D = D
         self.model = model
@@ -147,6 +148,14 @@ class Poised_Dataset:
 
         if pois_func ==0:
             print("随机选择样本,并根据net生成投毒数据集~")
+            self._pois_D_ran()
+        else :
+            print("针对特定的类样本Class0，根据net生成投毒数据集")
+            self._pois_D_Class()
+
+
+        self._capture_debug_info()
+
 
     def _rand_sample(self):
         # 任意类中,随机选择N个样本,返回对应的位置和target
@@ -161,7 +170,7 @@ class Poised_Dataset:
     def _D_onlypoised_ran(self):
         # 任意类中构造投毒样本new_y,
         rand_positions, x, y =self._rand_sample()
-        pr = utils.predict_proba(x,self.model.train_model())
+        pr = utils.predict_proba(x,self.model)
         # y = torch.argmax(pr,dim=1) if y != torch.argmax(pr,dim=1) else torch.argsort(pr, dim=1)[-2][new_y == y]
         new_y = torch.argmax(pr,dim=1)
         new_y[new_y == y] = torch.argsort(pr, dim=1)[-2][new_y == y]
@@ -172,7 +181,51 @@ class Poised_Dataset:
 
     def _pois_D_ran(self):
         # 任意类中,构造被投毒的数据集
-        poisitions ,poisoned_y = self._D_onlypoised()
+        poisitions ,poisoned_y = self._D_onlypoised_ran()
+
+        poisitions = np.asarray(poisitions)
+        poisoned_y = np.asarray(poisoned_y)
+
+        targets = np.asarray(self.ori_D.targets)
+        targets[poisitions] = poisoned_y
+
+        self.pois_D = self.ori_D
+        self.pois_D.targets = list(targets)
+
+    def _rand_sample_class0(self):
+        # 在类0中,随机选择N个样本,返回对应的位置和target
+        random.seed(self.seed)
+
+        labels, targets = utils.get_data_targets(self.ori_D)
+        inds_clss = np.where(targets.cpu()==0)[0].tolist()
+
+        rand_positions = random.sample(inds_clss,self.pois_num) #从类0的索引中随机选取pois_num个
+        # 获取随机选中的x,y
+        y = targets[rand_positions]
+        x = labels[rand_positions]
+        return rand_positions, x, y
+
+    def _D_onlypoised_class0(self):
+        # Class 0 中构造投毒样本new_y,
+        rand_positions, x, y =self._rand_sample_class0()
+
+
+        pr = utils.predict_proba(x,self.model)
+        # y = torch.argmax(pr,dim=1) if y != torch.argmax(pr,dim=1) else torch.argsort(pr, dim=1)[-2][new_y == y]
+        new_y = torch.argmax(pr,dim=1)
+        new_y[new_y == y] = torch.argsort(pr, dim=1)[-2][new_y == y]
+
+        self.rand_positions = rand_positions
+
+        # X_clss = labels[targets==0] #对所有的tst构造做测试集
+        # y_clss = labels[targets==0]
+
+        self.D_onlypoised = utils.Normal_Dataset(x,new_y)
+        return rand_positions,new_y
+
+    def _pois_D_Class(self):
+        # 任意类中,构造被投毒的数据集
+        poisitions ,poisoned_y = self._D_onlypoised_class()
 
         poisitions = np.asarray(poisitions)
         poisoned_y = np.asarray(poisoned_y)
@@ -184,9 +237,7 @@ class Poised_Dataset:
         self.pois_D.targets = list(targets)
 
 
-
-
-    def capture_debug_info(self):
+    def _capture_debug_info(self):
         # capture debug info
         original_label_sum = sum(self.ori_D.targets)
         poised_label_sum = sum(self.pis_D.targets)

@@ -1,6 +1,10 @@
-from torch import nn
+from math import sqrt
 
-from utils import get_data_targets, predict_proba
+from torch import nn
+from sklearn.metrics import mean_squared_error
+
+import utils
+from utils import get_data_targets, predict_proba,predict
 
 
 class BaseMI:
@@ -16,14 +20,12 @@ class BaseMI:
 
     def _get_mean(self):
         trn_x, trn_y = get_data_targets(self.D_train)
-        loss = nn.CrossEntropyLoss()
-        predict_trn = predict_proba(trn_x, self.net)
-        trn_loss = loss(predict_trn, trn_y)
+        ptrdict_y=predict(trn_x, self.net)
+        mse = mean_squared_error(trn_y.cpu(),ptrdict_y.cpu())
+        return sqrt(mse)
 
-        return trn_loss
-
-    def MI(self, D):
-        x, y = get_data_targets(D)
-        predict = predict_proba(x, self.net)
-        count = (predict >= self.threshould).sum()
+    def MI(self, x, y):
+        predict_y = predict(x, self.net)
+        errors = y-predict_y
+        count = (abs(errors) <= self.threshould).sum()
         return count.cpu()

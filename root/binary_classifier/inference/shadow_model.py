@@ -2,14 +2,16 @@ from typing import List, Tuple, Dict
 from copy import copy
 
 import torch
-from torch.utils.data import Subset
 from tqdm import tqdm_notebook
 import torch.utils.data as data
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
 from sklearn.base import clone, BaseEstimator
-from utils import Normal_Dataset,get_data_targets,predict_proba
+
+import utils
+from utils import Normal_Dataset, get_data_targets, predict_proba
+
 
 #
 # try:
@@ -18,7 +20,6 @@ from utils import Normal_Dataset,get_data_targets,predict_proba
 #     import warnings
 #
 #     warnings.warn("Tensorflow is not installed")
-
 
 
 class ShadowModels:
@@ -56,8 +57,8 @@ class ShadowModels:
 
     def __init__(
             self,
-            train_set: Subset,
-            test_set: Subset,
+            train_set,
+            test_set,
             n_models: int,
             target_classes: int,
             learner,
@@ -87,12 +88,15 @@ class ShadowModels:
 
     @staticmethod
     def _split_data(
-            data_set: Subset, n_splits: int, n_classes: int
+            data_set, n_splits: int, n_classes: int
     ) -> List[np.ndarray]:
         """
         Split manually into n datasets maintaining class proportions
         """
-        data, targets = get_data_targets(data_set)
+        if isinstance(data_set, utils.Normal_Dataset):
+            data, targets = data_set.data_tensor, data_set.target_tensor
+        else:
+            data, targets = get_data_targets(data_set)
 
         classes = range(n_classes)
         class_partitions_X = []
@@ -167,20 +171,19 @@ class ShadowModels:
         for model, X_train, y_train, X_test, y_test in tqdm_notebook(
                 zip(self.models, self.train_splits[0], self.train_splits[1], self.test_splits[0], self.test_splits[1])):
             model.set_trainset(Normal_Dataset((X_train, y_train)))
-            net = model.train_model()
+            net = model.train_model_without_test()
 
             # data IN training set labeled 1
             X_train = torch.tensor(X_train).to(self.device)
             y_train = y_train.reshape(-1, 1)
 
-
-            predict_in = predict_proba(X_train, net) #predict(data), (n_samples, n_classes)
+            predict_in = predict_proba(X_train, net)  # predict(data), (n_samples, n_classes)
             res_in = np.hstack((predict_in.cpu(), y_train, np.ones_like(y_train)))
 
             # data OUT of training set, labeled 0
             X_test = torch.tensor(X_test).to(self.device)
             y_test = y_test.reshape(-1, 1)
-            predict_out = predict_proba(X_test,net)
+            predict_out = predict_proba(X_test, net)
             res_out = np.hstack((predict_out.cpu(), y_test, np.zeros_like(y_test)))
 
             # concat in single array

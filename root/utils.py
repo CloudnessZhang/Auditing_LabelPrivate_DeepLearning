@@ -9,10 +9,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Subset
 import random
 from make_dataset.DataFactory import SUPPORTED_DATASET, DataFactory
-from scipy import stats
 import torch.nn.functional as f
-
-from torchvision import transforms
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -38,7 +35,7 @@ def make_deterministic(seed):
 
 
 def get_sess(args):
-        return f"{args.dataset}_eps{args.eps}_delta{args.delta}_sigma{args.sigma}_auditMethod{args.audit_function}"
+        return f"{args.dataset}_net{args.net}_eps{args.eps}_delta{args.delta}_sigma{args.sigma}_auditMethod{args.audit_function}"
 
 
 def partition(dataset, proportion: float) -> list:
@@ -73,26 +70,9 @@ def get_data_targets(dataset: Subset):
 data_factory = DataFactory(which='mnist', data_root='../datasets')
 train_set, test_set = data_factory.get_train_set(), data_factory.get_test_set()
 
-
-def clopper_pearson(count, trials, conf):
-    count, trials, conf = np.array(count), np.array(trials), np.array(conf)
-    q = count / trials
-    ci_low = stats.beta.ppf(conf / 2., count, trials - count + 1)
-    ci_upp = stats.beta.isf(conf / 2., count + 1, trials - count)
-
-    if np.ndim(ci_low) > 0:
-        ci_low[q == 0] = 0
-        ci_upp[q == 1] = 1
-    else:
-        ci_low = ci_low if (q != 0) else 0
-        ci_upp = ci_upp if (q != 1) else 1
-    return ci_low, ci_upp
-
-
 def predict_proba(X, net):
-
     Xloader = DataLoader(X,128,shuffle=False)
-
+    torch.cuda.empty_cache()
     with torch.no_grad():
         for i, x_batch in enumerate(Xloader):
             y = f.softmax(net(x_batch))
@@ -102,6 +82,24 @@ def predict_proba(X, net):
                 y_prob = torch.cat((y_prob,y),dim=0)
     return y_prob
 
+def predict(X, net):
+    Xloader = DataLoader(X,128,shuffle=False)
+    torch.cuda.empty_cache()
+    with torch.no_grad():
+        for i, x_batch in enumerate(Xloader):
+            y = torch.max(net(x_batch),1)[1]
+            if i == 0:
+                pred = y
+            else:
+                pred = torch.cat((pred,y),dim=0)
+    return pred
+
+
+    X = torch.from_numpy(X_train).to(self.device)
+    torch.cuda.empty_cache()
+    with torch.no_grad():
+        y = np.argmax(net(X).detach().cpu().numpy(), axis=1)
+    return y
 
 def save_name(data_name, net_name, epoch, eps_theory, auditing_function, pois_num=0):
     # Based Average Accuracy Rate
@@ -129,3 +127,9 @@ def read_Class(class_rd, path):
     class_rd = pickle.load(in_f)
     in_f.close()
     return class_rd
+
+def get_D0_D1(D_0,num_classes):
+    # 令D_1.y=D_0.y+1
+    X,y=get_data_targets(D_0)
+    y_new = (y+1)%num_classes
+    return Normal_Dataset((X,y)), Normal_Dataset((X,y_new))
