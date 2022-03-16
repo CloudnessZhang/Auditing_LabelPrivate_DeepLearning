@@ -3,12 +3,10 @@ import pickle
 
 import numpy as np
 import torch
-import torchvision
-from torch.utils.data import Dataset, dataloader
+from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.utils.data import Subset
 import random
-from make_dataset.DataFactory import SUPPORTED_DATASET, DataFactory
 import torch.nn.functional as f
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -66,10 +64,6 @@ def get_data_targets(dataset: Subset):
         y.append(torch.squeeze(label))
     return torch.stack(x).to(device), torch.tensor(y).to(device)
 
-
-data_factory = DataFactory(which='mnist', data_root='../datasets')
-train_set, test_set = data_factory.get_train_set(), data_factory.get_test_set()
-
 def predict_proba(X, net):
     Xloader = DataLoader(X,128,shuffle=False)
     torch.cuda.empty_cache()
@@ -101,16 +95,16 @@ def predict(X, net):
         y = np.argmax(net(X).detach().cpu().numpy(), axis=1)
     return y
 
-def save_name(data_name, net_name, epoch, eps_theory, auditing_function, pois_num=0):
+def save_name(data_name, net_name, epoch, eps_theory, auditing_function, trials =0):
     # Based Average Accuracy Rate
     if auditing_function == 0:
         sess = 'BaseSimpleMI_'
     elif auditing_function == 1:
         sess = 'BasedShadowMI_'
     elif auditing_function == 2:
-        sess = 'BaseRandomPoisoned_poisNum' + str(pois_num) + '_'
+        sess = 'BasedMemorizationAttack_trials' +  str(trials) + '_'
     else:
-        sess = 'BasedBackdoorPoisoned_poisNum' + str(pois_num) + '_'
+        sess = 'BasedBackdoorPoisoned_poisNum' + str(trials) + '_'
 
     sess = sess + net_name + '_epsTheory' + str(eps_theory) + '_epo' + str(epoch) + '_' + data_name
     return sess
@@ -128,8 +122,3 @@ def read_Class(class_rd, path):
     in_f.close()
     return class_rd
 
-def get_D0_D1(D_0,num_classes):
-    # 令D_1.y=D_0.y+1
-    X,y=get_data_targets(D_0)
-    y_new = (y+1)%num_classes
-    return Normal_Dataset((X,y)), Normal_Dataset((X,y_new))

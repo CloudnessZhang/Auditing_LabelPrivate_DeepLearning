@@ -10,7 +10,7 @@ import torch
 from torch.utils.data import Subset
 
 import utils
-from make_dataset.DataFactory import SUPPORTED_DATASET, DataFactory, K_TABLE,Poised_Dataset
+from make_dataset import DataFactory
 from args.args_Setting import ALIBI_Settings, Audit_result
 from network.model import SUPPORTED_MODEL
 from network.alibi_model import ALIBI
@@ -20,7 +20,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 
 def main(args):
-    assert args.dataset.lower() in SUPPORTED_DATASET, "Unsupported dataset"
+    assert args.dataset.lower() in DataFactory.SUPPORTED_DATASET, "Unsupported dataset"
     assert args.net.lower() in SUPPORTED_MODEL, "Unsupported model"
 
     sess = utils.get_sess(args)
@@ -39,25 +39,26 @@ def main(args):
     ###########################################################
     # 加载数据集D0，D1
     ###########################################################
-    num_classes = K_TABLE[args.dataset.lower()]
-    data_factory = DataFactory(which=args.dataset.lower(), data_root=setting.data_dir)
-    train_set, test_set = data_factory.get_train_set(),data_factory.get_test_set()
+    num_classes = DataFactory.K_TABLE[args.dataset.lower()]
+    data_factory = DataFactory.Data_Loader(which=args.dataset.lower(), data_root=setting.data_dir)
+    train_set, test_set = data_factory.get_train_set(), data_factory.get_test_set()
     if args.audit_function == 0:  # 基于loss error的membership inference 的审计办法
-        D_0, D_1 = utils.get_D0_D1(train_set,num_classes)
+        D_0, D_1 = DataFactory.get_D0_D1(train_set, num_classes)
     elif args.audit_function == 1:  # 基于Shadow model的membership inference 的审计办法
-        D_0, D_1 = utils.get_D0_D1(train_set,num_classes)
+        D_0, D_1 = DataFactory.get_D0_D1(train_set, num_classes)
         shadow_train_set = D_0
         shadow_test_set = D_1
     elif args.audit_function == 2:
-        D_0, D_1 = utils.get_D0_D1(train_set,num_classes)
+        D_0 = DataFactory.Canaries_Dataset(train_set, num_classes, args.trails, setting.seed) # trials 个标签翻转
+        train_set = D_0.getDataset()
+        D_1 = data_factory.get_train_set()
     elif args.audit_function == 3:
         D_1 = train_set
         if args.net == 'alibi':
-            alibi_tmp = ALIBI(trainset=D_1,testset=test_set, num_classes=num_classes, setting=setting)
+            alibi_tmp = ALIBI(trainset=D_1, testset=test_set, num_classes=num_classes, setting=setting)
             model_tmp = alibi_tmp.train_model()
             # model_tmp = alibi_tmp.getModel() #暂时
-            D_0 = Poised_Dataset(D=D_1, model=model_tmp, pois_num=1000, pois_func=1)
-
+            D_0 = DataFactory.Poised_Dataset(D=D_1, model=model_tmp, pois_num=1000, pois_func=1)
 
     ###########################################################
     # 在D0数据集上训练模型，得到模型和理论上的隐私损失
@@ -77,7 +78,7 @@ def main(args):
     print("Target模型训练完毕，已保存~")
 
     # # 读取模型， 可以注释上述训练模型过程，直接使用之前训练完成的模型, 读取的epsilon_theory名称自行根据文件名设置
-    # save_name = utils.save_name(args.dataset.lower(), args.net, setting.learning.epochs, eps_theory=10.0,
+    # save_name = utils.save_name(args.dataset.lower(), args.net, setting.learning.epochs, eps_theory=1.0,
     #                             auditing_function=args.audit_function)
     # model_path = os.path.join(setting.save_dir, 'model', save_name) + '.pth'
     # model = torch.load(model_path)
@@ -86,23 +87,23 @@ def main(args):
     ###########################################################
     # 生成二分类器 ，得到二分类器T
     ###########################################################
-    attaker_path = os.path.join(setting.save_dir, 'attacker', save_name) + '.pickle'
-
-    if args.audit_function == 0:
-        T = base_MI.BaseMI(train_set, model)
-    elif args.audit_function == 1:  # 基于Shadow model的审计方法
-        alibi_shadow = ALIBI(shadow_train_set, None, num_classes, setting)
-        shm = shadow_model.ShadowModels(shadow_train_set, shadow_test_set, n_models=5,
-                                        target_classes=num_classes, learner=alibi_shadow,
-                                        epochs=setting.learning.epochs,
-                                        verbose=0)
-        rf_attack = RandomForestClassifier(n_estimators=100)
-        T = attack_model.AttackModels(target_classes=10, attack_learner=rf_attack)
-        T.fit(shm.results)  # attack model
-
-    # 保存attacker
-    utils.save_Class(T, attaker_path)
-    print("Shadow Attacker模型训练完毕，已保存~")
+    # attaker_path = os.path.join(setting.save_dir, 'attacker', save_name) + '.pickle'
+    #
+    # if args.audit_function == 0:
+    #     T = base_MI.BaseMI(train_set, model)
+    # elif args.audit_function == 1:  # 基于Shadow model的审计方法
+    #     alibi_shadow = ALIBI(shadow_train_set, None, num_classes, setting)
+    #     shm = shadow_model.ShadowModels(shadow_train_set, shadow_test_set, n_models=5,
+    #                                     target_classes=num_classes, learner=alibi_shadow,
+    #                                     epochs=setting.learning.epochs,
+    #                                     verbose=0)
+    #     rf_attack = RandomForestClassifier(n_estimators=100)
+    #     T = attack_model.AttackModels(target_classes=10, attack_learner=rf_attack)
+    #     T.fit(shm.results)  # attack model
+    #
+    # # 保存attacker
+    # utils.save_Class(T, attaker_path)
+    # print("Shadow Attacker模型训练完毕，已保存~")
 
     # # 读取attacker， 可以注释上述训练模型过程，直接使用之前训练完成的模型
     # if args.audit_function == 0:
@@ -117,13 +118,16 @@ def main(args):
     # ###########################################################
     audit_result_path = os.path.join(setting.save_dir, 'audit_result', save_name) + '.pickle'
 
-    Result = lowerbound.LowerBound(D_0, D_1, num_classes,model, T, args.audit_function)
+    # Result = lowerbound.LowerBound(D_0, D_1, num_classes,model, T, args.audit_function)
+    Result = lowerbound.LowerBound(D_0=D_0, D_1=D_1, num_classes=num_classes, model=model, T=None,
+                                   audit_function=args.audit_function)
+
     audit_result.epsilon_opt = Result.eps_OPT
     audit_result.epsilon_lb = Result.eps_LB
     audit_result.inference_accuary = Result.inference_accuary
     audit_result.poisoning_effect = Result.poisoning_effect
 
-    #输出审计结果
+    # 输出审计结果
     print(
         save_name,
         f"Model Loss: {audit_result.model_loss} ",
@@ -153,8 +157,10 @@ if __name__ == "__main__":
     parser.add_argument('--net', default='alibi', type=str, help='label private deep learning to be audited')
     parser.add_argument('--eps', default=0, type=float, help='privacy parameter epsilon')
     parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')
-    parser.add_argument('--sigma', default=2*(2.0 ** 0.5)/10, type=float, help='Guassion or Laplace perturbation coefficient')
-    parser.add_argument('--audit_function', default=1, type=bool, help='the function of auditing:'
+    parser.add_argument('--sigma', default=2 * (2.0 ** 0.5) / 1, type=float,
+                        help='Guassion or Laplace perturbation coefficient')
+    parser.add_argument('--trails', default=10000, type=float, help='The number of sample labels changed is trails')
+    parser.add_argument('--audit_function', default=2, type=bool, help='the function of auditing:'
                                                                        '0：based simple inference attack,'
                                                                        '1：based shadow model inference attack'
                                                                        '2: based memorization attack,'
@@ -164,4 +170,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(args)
-    # 默认为'mnist_e20_b265_2st_alpha4_eps8.0_d2_gamma0'T

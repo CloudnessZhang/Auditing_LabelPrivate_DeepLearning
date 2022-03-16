@@ -70,7 +70,7 @@ CIFAR100_TRANS = transforms.Compose(
     ]
 )
 
-class DataFactory:
+class Data_Loader:
     def __init__(self, which: str, data_root='../.', transform=None):
         """ 初始化数据集
 
@@ -254,10 +254,55 @@ class Poised_Dataset:
             )
 
 
+class Canaries_Dataset:
+    def __init__(self,dataset, num_classes, trails, seed):
+        self.num_classes = num_classes
+        self.num = trails
+        self.seed = seed
+        self.dataset = self._fill_canaries(dataset)
 
+    def _rand_pos_and_labels(self,dataset):
+        np.random.seed(self.seed)
+        rand_positions = np.random.choice(len(dataset.data), self.num, replace=False)
+        rand_labels = []
+        for idx in rand_positions:
+            y = dataset.targets[idx]
+            new_y = np.random.choice(list(set(range(self.num_classes)) - {y}))
+            rand_labels.append(new_y)
+        self.rand_positions = rand_positions
+        self.rand_labels = rand_labels
+        return rand_positions, rand_labels
 
+    def _fill_canaries(self,dataset):
+        """
+        Returns the dataset, where `N` random points are assigned a random incorrect label.
+        """
+        rand_positions, rand_labels = self._rand_pos_and_labels(dataset)
 
+        rand_positions = np.asarray(rand_positions)
+        rand_labels = np.asarray(rand_labels)
 
+        targets = np.asarray(dataset.targets)
+        targets[rand_positions] = rand_labels
+        dataset.targets = list(targets)
+
+        return dataset
+
+    def getDataset(self):
+        return self.dataset
+
+    def get_rand(self):
+        return self.rand_positions,self.rand_labels
+
+###########################################################
+# 获取相邻数据集
+###########################################################
+def get_D0_D1(D_0,num_classes):
+    # 令D_1.y=D_0.y+1
+    targets = (np.asarray(D_0.targets)+1)%num_classes
+    D_1= D_0
+    D_1.targets= list(targets)
+    return D_0, D_1
 
 
 

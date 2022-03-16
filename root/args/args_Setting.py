@@ -34,7 +34,7 @@ class ALIBI_LabelPrivacy:
 class ALIBI_Learning:
     lr: float = 0.1
     batch_size: int = 128
-    epochs: int = 10
+    epochs: int = 200
     momentum: float = 0.9
     weight_decay: float = 1e-4
     random_aug: bool = False
