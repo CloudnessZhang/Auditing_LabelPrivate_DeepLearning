@@ -336,13 +336,15 @@ class EPS_LB_SHADOWMI_Multi:
 
             # count_sum = len(self.D_0) + len(self.D_1)
             # 根据模型获取置信度
-            predict = predict_proba(x_in, self.model)
+            predict_in = predict_proba(x_in, self.model)
+            predict_out = predict_proba(x_out, self.model)
+
             # 基于影子模型隐私推理
-            # count = self._MI_in_train(y_in, predict_in) + self._MI_out_train(y_out, predict_out)
-            count, count_sum = self._MI(y_in, predict, y_out, predict)
-            total_count += count
-            total_count_sum += count_sum
+            count, count_sum = self._MI(y_in, predict_in, y_out, predict_out)
+            total_count = total_count +count
+            total_count_sum = total_count_sum+count_sum
         # 计算ε_LB
+        print("count= ",total_count,"count_sum =",total_count_sum)
         self.eps_OPT = eps_MI(len(y_in)*(self.num_classes-1), len(y_in)*(self.num_classes-1))
         self.eps_LB = eps_MI(total_count, total_count_sum)
         self.inference_acc = format(float(total_count) / float(total_count_sum), '.4f')

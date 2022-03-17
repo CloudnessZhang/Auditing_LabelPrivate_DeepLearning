@@ -96,33 +96,33 @@ def main(args):
     ###########################################################
     attaker_path = os.path.join(setting.save_dir, 'attacker', save_name) + '.pickle'
 
-    if args.audit_function == 0:
-        T = base_MI.BaseMI(train_set, model)
-    elif args.audit_function == 1 or args.audit_function==3:  # 基于Shadow model的审计方法
-        learner = ALIBI(None, None, num_classes, setting) #resnet18
-        shm = shadow_model.ShadowModels(shadow_train_set, shadow_test_set, n_models=5,
-                                        target_classes=num_classes, learner=learner,
-                                        epochs=setting.learning.epochs,
-                                        verbose=0)
-        rf_attack = RandomForestClassifier(n_estimators=100)
-        T = attack_model.AttackModels(target_classes=10, attack_learner=rf_attack)
-        T.fit(shm.results)  # attack model
-    elif args.audit_function == 2:
-        T = None
-
-    # 保存attacker
-    utils.save_Class(T, attaker_path)
-    print("Shadow Attacker模型训练完毕，已保存~")
-
-    # # 读取attacker， 可以注释上述训练模型过程，直接使用之前训练完成的模型
     # if args.audit_function == 0:
-    #     T = base_MI.BaseMI()
-    # elif args.audit_function == 1 or args.audit_function ==3:
-    #     T = attack_model.AttackModels()
+    #     T = base_MI.BaseMI(train_set, model)
+    # elif args.audit_function == 1 or args.audit_function==3:  # 基于Shadow model的审计方法
+    #     learner = ALIBI(None, None, num_classes, setting) #resnet18
+    #     shm = shadow_model.ShadowModels(shadow_train_set, shadow_test_set, n_models=5,
+    #                                     target_classes=num_classes, learner=learner,
+    #                                     epochs=setting.learning.epochs,
+    #                                     verbose=0)
+    #     rf_attack = RandomForestClassifier(n_estimators=100)
+    #     T = attack_model.AttackModels(target_classes=10, attack_learner=rf_attack)
+    #     T.fit(shm.results)  # attack model
     # elif args.audit_function == 2:
     #     T = None
-    # T = utils.read_Class(T, attaker_path)
-    # print("二分类器加载完毕~今天也要加油呀！~")
+    #
+    # # 保存attacker
+    # utils.save_Class(T, attaker_path)
+    # print("Shadow Attacker模型训练完毕，已保存~")
+
+    # 读取attacker， 可以注释上述训练模型过程，直接使用之前训练完成的模型
+    if args.audit_function == 0:
+        T = base_MI.BaseMI()
+    elif args.audit_function == 1 or args.audit_function ==3:
+        T = attack_model.AttackModels()
+    elif args.audit_function == 2:
+        T = None
+    T = utils.read_Class(T, attaker_path)
+    print("二分类器加载完毕~今天也要加油呀！~")
 
     # ###########################################################
     # # 计算ε的经验下界
@@ -168,10 +168,10 @@ if __name__ == "__main__":
     parser.add_argument('--net', default='alibi', type=str, help='label private deep learning to be audited')
     parser.add_argument('--eps', default=0, type=float, help='privacy parameter epsilon')
     parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')
-    parser.add_argument('--sigma', default=2 * (2.0 ** 0.5) / 1, type=float,
+    parser.add_argument('--sigma', default=2 * (2.0 ** 0.5) / 10, type=float,
                         help='Guassion or Laplace perturbation coefficient')
     parser.add_argument('--trails', default=10000, type=float, help='The number of sample labels changed is trails')
-    parser.add_argument('--audit_function', default=1, type=bool, help='the function of auditing:'
+    parser.add_argument('--audit_function', default=3, type=bool, help='the function of auditing:'
                                                                        '0：based simple inference attack,'
                                                                        '1：based shadow model inference attack'
                                                                        '2: based memorization attack,'
