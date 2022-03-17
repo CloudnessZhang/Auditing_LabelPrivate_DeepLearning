@@ -61,6 +61,8 @@ class LowerBound:
             self.inference_accuary = self.EPS_LB.inference_acc
         elif self.audit_func == 2:
             self.EPS_LB = EPS_LB_Memorization(D_0, D_1, num_classes,model)
+        elif self.audit_func ==3:
+            self.EPS_LB = EPS_LB_SHADOWMI_Multi(D_0, D_1, num_classes, model, T)
         # elif self.audit_func == 2:
         # self.poisoning_Effect = self.EPS_LB.poisoning_effect
 
@@ -140,7 +142,9 @@ class EPS_LB_SHADOWMI:
         self.eps_LB = eps_MI(count, count_sum)
         self.inference_acc = format(float(count) / float(count_sum), '.4f')
 
-
+###########################################################
+# 利用 Memorization Attack 计算epsilon的下界
+###########################################################
 class EPS_LB_Memorization:
     def __init__(self, D_0, D_1,num_classes, model):
         self.D_0 = D_0.getDataset()
@@ -286,3 +290,59 @@ class EPS_LB_Memorization:
         eps_low, eps_high = self.compute_eps(c1, c2)
         self.eps_OPT = eps_MI(len(y_in), len(y_in))
         self.eps_LB = max(eps_low,eps_high)
+
+###########################################################
+# 利用 Shadow_MI |C|-1 个 D_1 计算epsilon的下界
+###########################################################
+class EPS_LB_SHADOWMI_Multi:
+    def __init__(self, D_0, D_1, num_classes, model, T):
+        self.D_0 = D_0
+        self.D_1 = D_1
+        self.num_classes = num_classes
+        self.model = model
+        self.T = T
+        self._eps_LB()
+
+    def _MI_in_train(self, y, pr):
+        res_in = self.T.predict(pr.cpu(), y.cpu(), batch=True)
+        count = np.sum(np.argmax(res_in, axis=1))
+        return count
+
+    def _MI_out_train(self, y, pr):
+        return len(y) - self._MI_in_train(y, pr)
+
+    def _MI(self, y_in, pr_in, y_out, pr_out):
+        res_in = self.T.predict(pr_in.cpu(), y_in.cpu(), batch=True)
+        res_out = self.T.predict(pr_out.cpu(), y_out.cpu(), batch=True)
+        guess_1 = np.argmax(res_in, axis=1)  # 1:in 0:out
+        guess_2 = np.argmax(res_out, axis=1)
+        # 统计弃权次数,即均判断为D_1
+        abstain = np.where((guess_1 + guess_2) == 0)[0].size
+        count_sum = len(y_in) - abstain
+        # 统计成功次数,即(x,y)判断为D_0,(x,y')判断为D_1
+        count = np.where((guess_1 == 1) & (guess_2 == 0))[0].size
+        # 统计比较后成功次数,即(x,y)(x,y')均判断为D_0,但(x,y)可能性更大
+        compare_indx = np.where((guess_1 == 1) & (guess_2 == 1))[0]
+        compare_1 = res_in[:, 1][compare_indx]
+        compare_2 = res_out[:, 1][compare_indx]
+        count = count + np.where(compare_1 >= compare_2)[0].size
+        return count, count_sum
+
+    def _eps_LB(self):
+        # 计算最佳统计结果下的隐私损失ε_OPT
+        total_count , total_count_sum = 0, 0
+        for D_1_i in self.D_1:
+            x_in, y_in, x_out, y_out = get_X_y(self.D_0, D_1_i)
+
+            # count_sum = len(self.D_0) + len(self.D_1)
+            # 根据模型获取置信度
+            predict = predict_proba(x_in, self.model)
+            # 基于影子模型隐私推理
+            # count = self._MI_in_train(y_in, predict_in) + self._MI_out_train(y_out, predict_out)
+            count, count_sum = self._MI(y_in, predict, y_out, predict)
+            total_count += count
+            total_count_sum += count_sum
+        # 计算ε_LB
+        self.eps_OPT = eps_MI(len(y_in)*(self.num_classes-1), len(y_in)*(self.num_classes-1))
+        self.eps_LB = eps_MI(total_count, total_count_sum)
+        self.inference_acc = format(float(total_count) / float(total_count_sum), '.4f')

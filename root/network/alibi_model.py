@@ -634,16 +634,15 @@ class ALIBI:
             acc, loss = self._test(self.model, test_loader, criterion, epoch)
         return self.model
 
-    def train_model_without_test(self):
+    def train_model_without_DPandTest(self,trainset):
         setting = self.setting
         # DEFINE LOSS FUNCTION (CRITERION)
-        criterion = self.criterion
+        criterion = nn.CrossEntropyLoss()
+        model = self.model
         # DEFINE OPTIMIZER
         optimizer = self.optimizer
-        # label differential privacy
-        self.trainset = self._label_dp()
         train_loader = data.DataLoader(
-            self.trainset,
+            dataset=trainset,
             batch_size=setting.learning.batch_size,
             shuffle=True,
             drop_last=True,
@@ -653,15 +652,35 @@ class ALIBI:
 
         for epoch in range(setting.learning.epochs):
             self._adjust_learning_rate(optimizer, epoch, setting.learning.lr)
-            self.randomized_label_privacy.train()
-            assert isinstance(criterion, Ohm)  # double check!
-
+            model.train()
+            losses = []
+            acc = []
             # train for one epoch
-            acc, loss = self._train(self.model, train_loader, optimizer, criterion, epoch)
-            # evaluate on validation set
-            if self.randomized_label_privacy is not None:
-                self.randomized_label_privacy.eval()
-        return self.model
+            for i, (images, target) in enumerate(train_loader):
+                images = images.to(self.device)
+                target = target.to(self.device)
+                optimizer.zero_grad()
+                output = model(images)
+                loss = criterion(output, target)
+
+
+                # measure accuracy and record loss
+                preds = np.argmax(output.detach().cpu().numpy(), axis=1)
+                target = target.detach().cpu().numpy()
+                acc1 = (preds == target).mean()
+
+                losses.append(loss.item())
+                acc.append(acc1)
+
+                # compute gradient and do SGD step
+                loss.backward()
+                optimizer.step()
+            print(
+                f"Train epoch {epoch}:",
+                f"Loss: {np.mean(losses):.6f} ",
+                f"Acc: {np.mean(acc) :.6f} ",
+            )
+        return model
 
     def predict_proba(self, X_train):
         net = self.getModel()

@@ -170,8 +170,8 @@ class ShadowModels:
         results = []
         for model, X_train, y_train, X_test, y_test in tqdm_notebook(
                 zip(self.models, self.train_splits[0], self.train_splits[1], self.test_splits[0], self.test_splits[1])):
-            model.set_trainset(Normal_Dataset((X_train, y_train)))
-            net = model.train_model_without_test()
+            net = model.train_model_without_DPandTest(Normal_Dataset((X_train, y_train)))
+
 
             # data IN training set labeled 1
             X_train = torch.tensor(X_train).to(self.device)

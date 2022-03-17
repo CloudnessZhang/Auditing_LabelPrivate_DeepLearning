@@ -1,6 +1,7 @@
 import os
 import pickle
 import random
+from copy import copy
 
 import numpy as np
 import torch
@@ -297,14 +298,23 @@ class Canaries_Dataset:
 ###########################################################
 # 获取相邻数据集
 ###########################################################
-def get_D0_D1(D_0,num_classes):
+def get_D1(dataset,num_classes):
     # 令D_1.y=D_0.y+1
-    targets = (np.asarray(D_0.targets)+1)%num_classes
-    D_1= D_0
+    targets = (np.asarray(dataset.targets)+1)%num_classes
+    D_1= dataset
     D_1.targets= list(targets)
-    return D_0, D_1
+    return D_1
 
+def get_muti_D1(dataset,num_classes):
+    # 获取|C-1|个相邻数据集
+    D_1s= [copy(dataset) for _ in range(num_classes-1)]
+    # models = [copy(learner) for _ in range(n)]
 
+    for i,D_1 in zip(range(1,num_classes),D_1s):
+        targets = (np.asarray(dataset.targets)+i)%num_classes
+        D_1.targets = list(targets)
+
+    return D_1s
 
 # def rand_pos_and_labels(trainset, N, seed=None):
 #     """

@@ -103,8 +103,8 @@ def save_name(data_name, net_name, epoch, eps_theory, auditing_function, trials 
         sess = 'BasedShadowMI_'
     elif auditing_function == 2:
         sess = 'BasedMemorizationAttack_trials' +  str(trials) + '_'
-    else:
-        sess = 'BasedBackdoorPoisoned_poisNum' + str(trials) + '_'
+    elif auditing_function == 3:
+        sess = 'BasedShadowMI With |C|-1 D_1 _'
 
     sess = sess + net_name + '_epsTheory' + str(eps_theory) + '_epo' + str(epoch) + '_' + data_name
     return sess
