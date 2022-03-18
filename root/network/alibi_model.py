@@ -14,6 +14,7 @@ from torch.backends import cudnn
 from torch.utils.data import Subset
 from tqdm import tqdm
 
+import utils
 from args.args_Setting import ALIBI_Settings
 from network import model
 from utils import Normal_Dataset
@@ -110,7 +111,7 @@ class NoisedCIFAR():
     ):
         self.cifar = cifar
         self.rlp = randomized_label_privacy
-        if isinstance(cifar, Normal_Dataset):
+        if isinstance(cifar, utils.Normal_Dataset):
             targets = cifar.target_tensor
         elif isinstance(cifar, Subset):
             targets = [cifar.dataset.targets[i] for i in cifar.indices]

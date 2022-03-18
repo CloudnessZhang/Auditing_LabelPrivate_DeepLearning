@@ -138,47 +138,59 @@ class Data_Loader:
 ###########################################################
 # 生成被投毒的数据集
 ###########################################################
-class Poised_Dataset:
-    def __init__(self, seed = 11337, D=None, model=None, pois_num=None, pois_func=1):
+class Poisoned_Dataset:
+    def __init__(self, dataset, model, num_classes, trials, seed, rand_class = True, pois_func=0):
         self.seed = seed
-        self.ori_D = D
+        self.dataset = dataset
         self.model = model
-        self.pois_num = pois_num
+        self.num_classes = num_classes
+        self.poison_num = trials
         self.pois_func = pois_func
-        # self.pois_D
 
-        if pois_func ==0:
-            print("随机选择样本,并根据net生成投毒数据集~")
-            self._pois_D_ran()
+        if rand_class == True:
+            # print("随机选择样本,并根据net生成投毒数据集~")
+            if pois_func == 0: # 取argmin
+                self.dataset = self._D_argmin_Rand()
+            else: # 取argmax or second
+                self.dataset = self._D_argmax_Rand()
+            # self._pois_D_ran()
         else :
-            print("针对特定的类样本Class0，根据net生成投毒数据集")
-            self._pois_D_Class()
-
-
-        self._capture_debug_info()
-
+            if pois_func == 0: # 取argmin
+                self.dataset = self._D_argmin_Specific()
+            else: # 取argmax or second
+                self.dataset = self._D_argmax_Specific()
 
     def _rand_sample(self):
         # 任意类中,随机选择N个样本,返回对应的位置和target
-        labels, targets = utils.get_data_targets(self.ori_D)
+        labels, targets = utils.get_data_targets(self.dataset)
         np.random.seed(self.seed)
-        rand_positions = np.random.choice(len(self.oriD.targets), self.pois_num, replace=False)
+        rand_positions = np.random.choice(len(self.dataset.targets), self.poison_num, replace=False)
         # 获取随机选中的x,y
         y = targets[rand_positions]
         x = labels[rand_positions]
-        return rand_positions, x, y
-
-    def _D_onlypoised_ran(self):
-        # 任意类中构造投毒样本new_y,
-        rand_positions, x, y =self._rand_sample()
-        pr = utils.predict_proba(x,self.model)
-        # y = torch.argmax(pr,dim=1) if y != torch.argmax(pr,dim=1) else torch.argsort(pr, dim=1)[-2][new_y == y]
-        new_y = torch.argmax(pr,dim=1)
-        new_y[new_y == y] = torch.argsort(pr, dim=1)[-2][new_y == y]
-
-        self.D_onlypoised = utils.Normal_Dataset(x,new_y)
         self.rand_positions = rand_positions
-        return rand_positions,new_y
+        return rand_positions, x, np.asarray(y.cpu())
+        
+    def _D_argmin_Rand(self):
+        # 在任意个类中,根据先验知识,选择argmin(predict)的类作为new_y
+        poisoned_positions , orignal_x, orignal_y = self._rand_sample() #随机选择trials个样本
+        predictions = utils.predict_proba(orignal_x,self.model) # 得到先验知识pr
+        # 构造投毒样本
+        poisoned_y = torch.argmin(predictions,dim=1)
+        inds = np.where(poisoned_y.cpu()==orignal_y)[0].tolist()
+        poisoned_y[inds] = torch.argsort(predictions,dim=1)[:,1][inds]
+        # 获取输入二分类算法的D_0,D_1
+        self.D_0 = utils.Normal_Dataset((orignal_x,poisoned_y))
+        self.D_1 =utils.Normal_Dataset((orignal_x,orignal_y))
+
+        dataset = self.dataset
+
+        targets = np.asarray(dataset.targets)
+        targets[poisoned_positions] = poisoned_y.cpu()
+        dataset.targets = list(targets)
+
+        return dataset
+
 
     def _pois_D_ran(self):
         # 任意类中,构造被投毒的数据集
@@ -238,27 +250,10 @@ class Poised_Dataset:
         self.pois_D.targets = list(targets)
 
 
-    def _capture_debug_info(self):
-        # capture debug info
-        original_label_sum = sum(self.ori_D.targets)
-        poised_label_sum = sum(self.pis_D.targets)
-        original_last10_labels = [self.ori_D[-i][1] for i in range(1, 11)]
-        poised_last10_labels = [self.pis_D[-i][1] for i in range(1, 11)]
-        # verify presence 如果：target值之和不变说明，插入失败
-        if original_label_sum == poised_label_sum:
-            raise Exception(
-                "Canary infiltration has failed."
-                f"\nOriginal label sum: {original_label_sum} vs"
-                f" Canary label sum: {poised_label_sum}"
-                f"\nOriginal last 10 labels: {original_last10_labels} vs"
-                f" Canary last 10 labels: {poised_last10_labels}"
-            )
-
-
 class Canaries_Dataset:
-    def __init__(self,dataset, num_classes, trails, seed):
+    def __init__(self,dataset, num_classes, trials, seed):
         self.num_classes = num_classes
-        self.num = trails
+        self.num = trials
         self.seed = seed
         self.dataset = self._fill_canaries(dataset)
 
@@ -315,20 +310,3 @@ def get_muti_D1(dataset,num_classes):
         D_1.targets = list(targets)
 
     return D_1s
-
-# def rand_pos_and_labels(trainset, N, seed=None):
-#     """
-#     Selects `N` random positions in the training set and `N` corresponding
-#     random incorrect labels.
-#     恢复训练集中的使用N个随机canaries的数据集
-#     """
-#     np.random.seed(seed)
-#     num_classes = len(trainset.classes)
-#     rand_positions = np.random.choice(len(trainset.data), N, replace=False)
-#     rand_labels = []
-#     for idx in rand_positions:
-#         y = trainset.targets[idx]
-#         new_y = np.random.choice(list(set(range(num_classes)) - {y}))
-#         rand_labels.append(new_y)
-#
-#     return rand_positions, rand_labels

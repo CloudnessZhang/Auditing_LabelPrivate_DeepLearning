@@ -51,7 +51,7 @@ def main(args):
         shadow_train_set = D_0
         shadow_test_set = D_1
     elif args.audit_function == 2:
-        D_0 = DataFactory.Canaries_Dataset(train_set, num_classes, args.trails, setting.seed) # trials 个标签翻转
+        D_0 = DataFactory.Canaries_Dataset(train_set, num_classes, args.trials, setting.seed)  # trials 个标签翻转
         train_set = D_0.getDataset()
         D_1 = data_factory.get_train_set()
     elif args.audit_function == 3:
@@ -59,70 +59,74 @@ def main(args):
         D_1 = DataFactory.get_muti_D1(data_factory.get_train_set(), num_classes)
         shadow_test_set = ConcatDataset(D for D in D_1)
         shadow_train_set = D_0
-    elif args.audit_function ==4:
-        D_1 = train_set
+    elif args.audit_function == 4:
         if args.net == 'alibi':
-            alibi_tmp = ALIBI(trainset=D_1, testset=test_set, num_classes=num_classes, setting=setting)
-            model_tmp = alibi_tmp.train_model()
-            # model_tmp = alibi_tmp.getModel() #暂时
-            D_0 = DataFactory.Poised_Dataset(D=D_1, model=model_tmp, pois_num=1000, pois_func=1)
+            alibi_make_poison = ALIBI(trainset=train_set, testset=test_set, num_classes=num_classes, setting=setting)
+            model_make_poison = alibi_make_poison.train_model()
+            # model_make_poison = alibi_make_poison.getModel()  # 测试用
+            poisoned_dataset = DataFactory.Poisoned_Dataset(train_set, model=model_make_poison, num_classes=num_classes,
+                                                            trials=args.trials, seed=setting.seed, rand_class=True,
+                                                            pois_func=0)
+            train_set, D_0, D_1 = poisoned_dataset.dataset, poisoned_dataset.D_0, poisoned_dataset.D_1
 
     ###########################################################
     # 在D0数据集上训练模型，得到模型和理论上的隐私损失
     ###########################################################
-    # if args.net == 'alibi':
-    #     alibi = ALIBI(train_set, test_set, num_classes, setting)
-    #     model = alibi.train_model()
-    #     audit_result.epsilon_theory = alibi.get_eps()
-    #     audit_result.model_accuary = alibi.acc
-    #     audit_result.model_loss = alibi.loss
-    #
-    # save_name = utils.save_name(args.dataset.lower(), args.net, setting.learning.epochs, audit_result.epsilon_theory,
-    #                             args.audit_function)
-    # model_path = os.path.join(setting.save_dir, 'model', save_name) + '.pth'
-    # # 保存模型
-    # torch.save(model, model_path)
-    # print("Target模型训练完毕，已保存~")
+    # 输入train_set 和 test_set
+    if args.net == 'alibi':
+        alibi = ALIBI(train_set, test_set, num_classes, setting)
+        model = alibi.train_model()
+        audit_result.epsilon_theory = alibi.get_eps()
+        audit_result.model_accuary = alibi.acc
+        audit_result.model_loss = alibi.loss
 
-    # 读取模型， 可以注释上述训练模型过程，直接使用之前训练完成的模型, 读取的epsilon_theory名称自行根据文件名设置
-    save_name = utils.save_name(args.dataset.lower(), args.net, setting.learning.epochs, eps_theory=1.0,
-                                auditing_function=args.audit_function)
+    save_name = utils.save_name(args.dataset.lower(), args.net, setting.learning.epochs, audit_result.epsilon_theory,
+                                args.audit_function)
     model_path = os.path.join(setting.save_dir, 'model', save_name) + '.pth'
-    model = torch.load(model_path)
-    print("Target模型加载完毕~今天也要加油呀！")
+    # 保存模型
+    torch.save(model, model_path)
+    print("Target模型训练完毕，已保存~")
+
+    # # 读取模型， 可以注释上述训练模型过程，直接使用之前训练完成的模型, 读取的epsilon_theory名称自行根据文件名设置
+    # save_name = utils.save_name(args.dataset.lower(), args.net, setting.learning.epochs, eps_theory=1.0,
+    #                             auditing_function=args.audit_function)
+    # model_path = os.path.join(setting.save_dir, 'model', save_name) + '.pth'
+    # model = torch.load(model_path)
+    # print("Target模型加载完毕~今天也要加油呀！")
 
     ###########################################################
     # 生成二分类器 ，得到二分类器T
     ###########################################################
+    # 输入train_set 和 D_1
+
     attaker_path = os.path.join(setting.save_dir, 'attacker', save_name) + '.pickle'
 
-    # if args.audit_function == 0:
-    #     T = base_MI.BaseMI(train_set, model)
-    # elif args.audit_function == 1 or args.audit_function==3:  # 基于Shadow model的审计方法
-    #     learner = ALIBI(None, None, num_classes, setting) #resnet18
-    #     shm = shadow_model.ShadowModels(shadow_train_set, shadow_test_set, n_models=5,
-    #                                     target_classes=num_classes, learner=learner,
-    #                                     epochs=setting.learning.epochs,
-    #                                     verbose=0)
-    #     rf_attack = RandomForestClassifier(n_estimators=100)
-    #     T = attack_model.AttackModels(target_classes=10, attack_learner=rf_attack)
-    #     T.fit(shm.results)  # attack model
-    # elif args.audit_function == 2:
-    #     T = None
-    #
-    # # 保存attacker
-    # utils.save_Class(T, attaker_path)
-    # print("Shadow Attacker模型训练完毕，已保存~")
-
-    # 读取attacker， 可以注释上述训练模型过程，直接使用之前训练完成的模型
-    if args.audit_function == 0:
-        T = base_MI.BaseMI()
-    elif args.audit_function == 1 or args.audit_function ==3:
-        T = attack_model.AttackModels()
+    if args.audit_function == 0 or args.audit_function == 4:
+        T = base_MI.BaseMI(train_set, model)
+    elif args.audit_function == 1 or args.audit_function == 3:  # 基于Shadow model的审计方法
+        learner = ALIBI(None, None, num_classes, setting)  # resnet18
+        shm = shadow_model.ShadowModels(shadow_train_set, shadow_test_set, n_models=5,
+                                        target_classes=num_classes, learner=learner,
+                                        epochs=setting.learning.epochs,
+                                        verbose=0)
+        rf_attack = RandomForestClassifier(n_estimators=100)
+        T = attack_model.AttackModels(target_classes=10, attack_learner=rf_attack)
+        T.fit(shm.results)  # attack model
     elif args.audit_function == 2:
         T = None
-    T = utils.read_Class(T, attaker_path)
-    print("二分类器加载完毕~今天也要加油呀！~")
+    # 保存attacker
+    utils.save_Class(T, attaker_path)
+    print("Shadow Attacker模型训练完毕，已保存~")
+
+    # # 读取attacker， 可以注释上述训练模型过程，直接使用之前训练完成的模型
+    # if args.audit_function == 0 or args.audit_function == 4:
+    #     T = base_MI.BaseMI()
+    # elif args.audit_function == 1 or args.audit_function == 3:
+    #     T = attack_model.AttackModels()
+    # elif args.audit_function == 2:
+    #     T = None
+    # T = utils.read_Class(T, attaker_path)
+    # print("二分类器加载完毕~今天也要加油呀！~")
 
     # ###########################################################
     # # 计算ε的经验下界
@@ -170,13 +174,13 @@ if __name__ == "__main__":
     parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')
     parser.add_argument('--sigma', default=2 * (2.0 ** 0.5) / 10, type=float,
                         help='Guassion or Laplace perturbation coefficient')
-    parser.add_argument('--trails', default=10000, type=float, help='The number of sample labels changed is trails')
-    parser.add_argument('--audit_function', default=3, type=bool, help='the function of auditing:'
+    parser.add_argument('--trials', default=10000, type=float, help='The number of sample labels changed is trials')
+    parser.add_argument('--audit_function', default=4, type=bool, help='the function of auditing:'
                                                                        '0：based simple inference attack,'
                                                                        '1：based shadow model inference attack'
                                                                        '2: based memorization attack,'
                                                                        '3: based shadow model inference attack with |C-1|'
-                                                                       '4：based poisoning attacked,'
+                                                                       '4：based Simple poisoning attacked,'
                                                                        '5: combined 1 and 2')
 
     args = parser.parse_args()

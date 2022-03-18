@@ -33,7 +33,7 @@ def make_deterministic(seed):
 
 
 def get_sess(args):
-        return f"{args.dataset}_net{args.net}_eps{args.eps}_delta{args.delta}_sigma{args.sigma}_auditMethod{args.audit_function}"
+    return f"{args.dataset}_net{args.net}_eps{args.eps}_delta{args.delta}_sigma{args.sigma}_auditMethod{args.audit_function}"
 
 
 def partition(dataset, proportion: float) -> list:
@@ -64,8 +64,9 @@ def get_data_targets(dataset: Subset):
         y.append(torch.squeeze(label))
     return torch.stack(x).to(device), torch.tensor(y).to(device)
 
+
 def predict_proba(X, net):
-    Xloader = DataLoader(X,128,shuffle=False)
+    Xloader = DataLoader(X, 128, shuffle=False)
     torch.cuda.empty_cache()
     with torch.no_grad():
         for i, x_batch in enumerate(Xloader):
@@ -73,41 +74,39 @@ def predict_proba(X, net):
             if i == 0:
                 y_prob = y
             else:
-                y_prob = torch.cat((y_prob,y),dim=0)
+                y_prob = torch.cat((y_prob, y), dim=0)
     return y_prob
 
+
 def predict(X, net):
-    Xloader = DataLoader(X,128,shuffle=False)
+    Xloader = DataLoader(X, 128, shuffle=False)
     torch.cuda.empty_cache()
     with torch.no_grad():
         for i, x_batch in enumerate(Xloader):
-            y = torch.max(net(x_batch),1)[1]
+            y = torch.max(net(x_batch), 1)[1]
             if i == 0:
                 pred = y
             else:
-                pred = torch.cat((pred,y),dim=0)
+                pred = torch.cat((pred, y), dim=0)
     return pred
 
 
-    X = torch.from_numpy(X_train).to(self.device)
-    torch.cuda.empty_cache()
-    with torch.no_grad():
-        y = np.argmax(net(X).detach().cpu().numpy(), axis=1)
-    return y
-
-def save_name(data_name, net_name, epoch, eps_theory, auditing_function, trials =0):
+def save_name(data_name, net_name, epoch, eps_theory, auditing_function, trials=0):
     # Based Average Accuracy Rate
     if auditing_function == 0:
         sess = 'BaseSimpleMI_'
     elif auditing_function == 1:
         sess = 'BasedShadowMI_'
     elif auditing_function == 2:
-        sess = 'BasedMemorizationAttack_trials' +  str(trials) + '_'
+        sess = 'BasedMemorizationAttack_trials' + str(trials) + '_'
     elif auditing_function == 3:
         sess = 'BasedShadowMI With |C|-1 D_1 _'
+    elif auditing_function == 4:
+        sess = 'BasedSimplePoisoning_' + str(trials) + '_'
 
     sess = sess + net_name + '_epsTheory' + str(eps_theory) + '_epo' + str(epoch) + '_' + data_name
     return sess
+
 
 def save_Class(class_sv, path):
     out_put = open(path, 'wb')
@@ -121,4 +120,3 @@ def read_Class(class_rd, path):
     class_rd = pickle.load(in_f)
     in_f.close()
     return class_rd
-

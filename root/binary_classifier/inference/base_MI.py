@@ -1,5 +1,6 @@
 from math import sqrt
 
+import numpy as np
 from torch import nn
 from sklearn.metrics import mean_squared_error
 

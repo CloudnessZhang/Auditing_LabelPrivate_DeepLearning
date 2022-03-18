@@ -36,7 +36,7 @@ def get_X_y(D_0, D_1):
         x_out, y_out = D_1.data_tensor, D_1.target_tensor
     else:
         x_out, y_out = get_data_targets(D_1)
-    return x_in, y_in, x_out, y_out
+    return x_in, torch.tensor(y_in), x_out, torch.tensor(y_out)
 
 
 ###########################################################
@@ -53,7 +53,7 @@ class LowerBound:
         self._epslb(D_0, D_1, num_classes, model, T)
 
     def _epslb(self, D_0, D_1, num_classes, model, T):
-        if self.audit_func == 0:
+        if self.audit_func == 0 or self.audit_func==4:
             self.EPS_LB = EPS_LB_SmipleMI(D_0, D_1, num_classes, model, T)
             self.inference_accuary = self.EPS_LB.inference_acc
         elif self.audit_func == 1:
