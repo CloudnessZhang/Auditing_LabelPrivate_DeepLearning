@@ -36,15 +36,14 @@ def get_X_y(D_0, D_1):
         x_out, y_out = D_1.data_tensor, D_1.target_tensor
     else:
         x_out, y_out = get_data_targets(D_1)
-    return x_in, torch.tensor(y_in), x_out, torch.tensor(y_out)
+    return x_in, y_in, x_out, y_out
 
 
 ###########################################################
 # 审计方法集成化
 ###########################################################
 class LowerBound:
-    def __init__(self, D_0, D_1, num_classes, model, T, audit_function):
-        self.audit_func = audit_function
+    def __init__(self, D_0, D_1, num_classes, model, T, args):
         self.eps_OPT: float = .0
         self.eps_LB: float = .0
         self.inference_accuary: float = .0
@@ -53,18 +52,23 @@ class LowerBound:
         self._epslb(D_0, D_1, num_classes, model, T)
 
     def _epslb(self, D_0, D_1, num_classes, model, T):
-        if self.audit_func == 0 or self.audit_func==4:
+        if self.audit_function == 0:  # 基于loss error的membership inference 的审计办法
             self.EPS_LB = EPS_LB_SmipleMI(D_0, D_1, num_classes, model, T)
             self.inference_accuary = self.EPS_LB.inference_acc
-        elif self.audit_func == 1:
+        elif self.audit_function == 1:  # 基于memorization attack的审计方法
+            self.EPS_LB = EPS_LB_Memorization(D_0, D_1, num_classes, model)
+        elif self.audit_function == 2:  # 基于Shadow model的membership inference 的审计办法
             self.EPS_LB = EPS_LB_SHADOWMI(D_0, D_1, num_classes, model, T)
             self.inference_accuary = self.EPS_LB.inference_acc
-        elif self.audit_func == 2:
-            self.EPS_LB = EPS_LB_Memorization(D_0, D_1, num_classes,model)
-        elif self.audit_func ==3:
-            self.EPS_LB = EPS_LB_SHADOWMI_Multi(D_0, D_1, num_classes, model, T)
-        # elif self.audit_func == 2:
-        # self.poisoning_Effect = self.EPS_LB.poisoning_effect
+        else : #基于Poisoning Attack的审计办法
+            if self.binary_classifier == 0:
+                self.EPS_LB = EPS_LB_SmipleMI(D_0, D_1, num_classes, model, T)
+                self.inference_accuary = self.EPS_LB.inference_acc
+            elif self.binary_classifier == 1:
+                self.EPS_LB = EPS_LB_Memorization(D_0, D_1, num_classes, model)
+            elif self.binary_classifier == 2:
+                self.EPS_LB = EPS_LB_SHADOWMI(D_0, D_1, num_classes, model, T)
+                self.inference_accuary = self.EPS_LB.inference_acc
 
         self.eps_OPT = self.EPS_LB.eps_OPT
         self.eps_LB = self.EPS_LB.eps_LB
@@ -142,25 +146,25 @@ class EPS_LB_SHADOWMI:
         self.eps_LB = eps_MI(count, count_sum)
         self.inference_acc = format(float(count) / float(count_sum), '.4f')
 
+
 ###########################################################
 # 利用 Memorization Attack 计算epsilon的下界
 ###########################################################
 class EPS_LB_Memorization:
-    def __init__(self, D_0, D_1,num_classes, model):
-        self.D_0 = D_0.getDataset()
-        self.rand_positions,self.rand_labels = D_0.get_rand()
+    def __init__(self, D_0, D_1, num_classes, model):
+        self.D_0 = D_0
         self.D_1 = D_1
         self.num_classes = num_classes
         self.model = model
         self._eps_LB()
 
-    def _get_confidence(self,predictions: numpy.ndarray):
-        canary_labels, canary_positions = self.rand_labels, self.rand_positions
+    def _get_confidence(self, predictions: numpy.ndarray, canary_labels):
+        canary_labels = np.asarray(canary_labels.cpu())
 
-        c1 = predictions[np.arange(len(canary_labels)),canary_labels]
+        c1 = predictions[np.arange(len(canary_labels)), canary_labels]
         c1 = c1.reshape(-1, 1)
 
-        true_labels = np.asarray(self.D_1.targets)[canary_positions]
+        true_labels = np.asarray(self.D_1.target_tensor.cpu())
 
         incorrect_labels = [  # 获取除{y1,y2}外的元素
             sorted(list(set(range(self.num_classes)) - {y1, y2}))
@@ -171,8 +175,8 @@ class EPS_LB_Memorization:
         c2 = []
 
         for i in range(incorrect_labels.shape[1]):  # 获取|C|-2的incorrect_labels的概率
-              c2.append(predictions[np.arange(len(canary_labels)),incorrect_labels[:, i]])
-        c2 = np.stack(c2,axis=-1)
+            c2.append(predictions[np.arange(len(canary_labels)), incorrect_labels[:, i]])
+        c2 = np.stack(c2, axis=-1)
 
         for i in range(len(canary_labels)):
             assert true_labels[i] not in incorrect_labels[i], i
@@ -285,11 +289,12 @@ class EPS_LB_Memorization:
 
         predictions = predict_proba(x_in, self.model)
 
-        c1, c2 = self._get_confidence(predictions.cpu().numpy())
+        c1, c2 = self._get_confidence(predictions.cpu().numpy(), y_in)
 
         eps_low, eps_high = self.compute_eps(c1, c2)
         self.eps_OPT = eps_MI(len(y_in), len(y_in))
-        self.eps_LB = max(eps_low,eps_high)
+        self.eps_LB = max(eps_low, eps_high)
+
 
 ###########################################################
 # 利用 Shadow_MI |C|-1 个 D_1 计算epsilon的下界
@@ -330,7 +335,7 @@ class EPS_LB_SHADOWMI_Multi:
 
     def _eps_LB(self):
         # 计算最佳统计结果下的隐私损失ε_OPT
-        total_count , total_count_sum = 0, 0
+        total_count, total_count_sum = 0, 0
         for D_1_i in self.D_1:
             x_in, y_in, x_out, y_out = get_X_y(self.D_0, D_1_i)
 
@@ -341,10 +346,10 @@ class EPS_LB_SHADOWMI_Multi:
 
             # 基于影子模型隐私推理
             count, count_sum = self._MI(y_in, predict_in, y_out, predict_out)
-            total_count = total_count +count
-            total_count_sum = total_count_sum+count_sum
+            total_count = total_count + count
+            total_count_sum = total_count_sum + count_sum
         # 计算ε_LB
-        print("count= ",total_count,"count_sum =",total_count_sum)
-        self.eps_OPT = eps_MI(len(y_in)*(self.num_classes-1), len(y_in)*(self.num_classes-1))
+        print("count= ", total_count, "count_sum =", total_count_sum)
+        self.eps_OPT = eps_MI(len(y_in) * (self.num_classes - 1), len(y_in) * (self.num_classes - 1))
         self.eps_LB = eps_MI(total_count, total_count_sum)
         self.inference_acc = format(float(total_count) / float(total_count_sum), '.4f')

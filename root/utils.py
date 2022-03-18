@@ -91,22 +91,52 @@ def predict(X, net):
     return pred
 
 
-def save_name(data_name, net_name, epoch, eps_theory, auditing_function, trials=0):
+def save_name(epoch, eps_theory, args):
     # Based Average Accuracy Rate
-    if auditing_function == 0:
+    if args.audit_function == 0:
         sess = 'BaseSimpleMI_'
-    elif auditing_function == 1:
+    elif args.audit_function == 1:
+        sess = 'BasedMemorizationAttack_trials' + str(args.trials) + '_'
+    elif args.audit_function == 2:
         sess = 'BasedShadowMI_'
-    elif auditing_function == 2:
-        sess = 'BasedMemorizationAttack_trials' + str(trials) + '_'
-    elif auditing_function == 3:
-        sess = 'BasedShadowMI With |C|-1 D_1 _'
-    elif auditing_function == 4:
-        sess = 'BasedSimplePoisoning_' + str(trials) + '_'
+    else :
+        sess = 'Base_PoisoningAttack_'
+        if args.binary_classifier == 0:
+            sess = sess + 'SimpleMI_'
+        elif args.binary_classifier == 1:
+            sess = sess + 'MemorizationAttack_trials' + str(args.trials) + '_'
+        else:
+            sess = sess + 'ShadowMI_'
+        sess = sess+'ClassedRandom_'+str(args.classed_random)+'_poisoningMethod' +str(args.poisoning_method)+'_'
 
-    sess = sess + net_name + '_epsTheory' + str(eps_theory) + '_epo' + str(epoch) + '_' + data_name
+    sess = sess + args.net + '_epsTheory' + str(eps_theory) + '_epo' + str(epoch) + '_' + args.dataset
     return sess
-
+    # parser = argparse.ArgumentParser(
+    #     description='Auditing Label Private Deep Learning')  # argparse 命令行参数解析器
+    #
+    # parser.add_argument('--dataset', default='cifar10', type=str, help='dataset name')
+    # parser.add_argument('--net', default='alibi', type=str, help='label private deep learning to be audited')
+    # parser.add_argument('--eps', default=0, type=float, help='privacy parameter epsilon')
+    # parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')
+    # parser.add_argument('--sigma', default=2 * (2.0 ** 0.5) / 1, type=float,
+    #                     help='Guassion or Laplace perturbation coefficient')
+    # parser.add_argument('--trials', default=10000, type=float, help='The number of sample labels changed is trials')
+    # parser.add_argument('--audit_function', default=1, type=int, help='the function of auditing:'
+    #                                                                    '0：based simple inference attack,'
+    #                                                                    '1：based memorization attack,'
+    #                                                                    '2: based shadow model inference attack,'
+    #                                                                    '3：based poisoning attacked.')
+    # parser.add_argument('--binary_classifier', default=0, type=int, help='the binary classifier to be combined with poisoned attack:'
+    #                                                                               '0: simple inference attack,'
+    #                                                                               '1: memorization attack,'
+    #                                                                               '2: shadow model inference attack')
+    # parser.add_argument('--classed_random',default=True,type=bool,help='Whether to poison a specific target')
+    # parser.add_argument('--poisoning_method',default=0,type=int,help='the Methods of constructing poisoned samples：'
+    #                                                                  '0: D_0= argmin, D_1=true_labels'
+    #                                                                  '1: D_0= argmax, D_1=argmin'
+    #                                                                  '2: D_0= argmax, D_1=true_labels')
+    #
+    # args = parser.parse_args()
 
 def save_Class(class_sv, path):
     out_put = open(path, 'wb')

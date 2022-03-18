@@ -50,4 +50,5 @@ class ALIBI_Settings:
     save_dir: str = "../result"
     data_dir: str = "../datasets"
     checkpoint_dir: str = "../checkpoint/"
-    seed: int = 11337
+    seed: int = 11338
+    #11337-11347
