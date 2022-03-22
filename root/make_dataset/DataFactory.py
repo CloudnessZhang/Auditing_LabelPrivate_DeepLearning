@@ -149,6 +149,7 @@ class Poisoned_Dataset:
         self.num_classes = num_classes
         self.poison_num = trials
         self.pois_func = pois_func
+        print("Crafting Dataset~")
 
         if pois_func == 0:  # D_0= argmin, D_1=true_labels
             self.dataset = self._D_argmin_true(rand_class)
@@ -175,7 +176,7 @@ class Poisoned_Dataset:
         target_class = 0
         # 在指定类：0中,随机选择N个样本,返回对应的位置和target
         labels, targets = utils.get_data_targets(self.dataset)
-        inds = np.where(targets == target_class)[0].tolist()
+        inds = np.where(np.asarray(targets.cpu()) == target_class)[0].tolist()
 
         assert len(inds) >= self.poison_num
 
@@ -358,8 +359,7 @@ class Data_Factory:
             if self.args.net == 'alibi':
                 alibi_make_poison = ALIBI(trainset=data_load.get_train_set(), testset=data_load.get_test_set(),
                                           num_classes=self.num_classes, setting=self.setting)
-                # model_make_poison = alibi_make_poison.train_model()
-                model_make_poison = alibi_make_poison.getModel()  # 测试用
+                model_make_poison = alibi_make_poison.train_model()
             poisoned_dataset = Poisoned_Dataset(data_load.get_train_set(), model=model_make_poison,
                                                 num_classes=self.num_classes,
                                                 trials=self.args.trials, seed=self.setting.seed,

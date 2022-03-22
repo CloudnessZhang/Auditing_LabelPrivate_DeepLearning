@@ -49,24 +49,24 @@ class LowerBound:
         self.inference_accuary: float = .0
         self.poisoning_effect: float = .0
 
-        self._epslb(D_0, D_1, num_classes, model, T)
+        self._epslb(D_0, D_1, num_classes, model, T,args)
 
-    def _epslb(self, D_0, D_1, num_classes, model, T):
-        if self.audit_function == 0:  # 基于loss error的membership inference 的审计办法
+    def _epslb(self, D_0, D_1, num_classes, model, T,args):
+        if args.audit_function == 0:  # 基于loss error的membership inference 的审计办法
             self.EPS_LB = EPS_LB_SmipleMI(D_0, D_1, num_classes, model, T)
             self.inference_accuary = self.EPS_LB.inference_acc
-        elif self.audit_function == 1:  # 基于memorization attack的审计方法
+        elif args.audit_function == 1:  # 基于memorization attack的审计方法
             self.EPS_LB = EPS_LB_Memorization(D_0, D_1, num_classes, model)
-        elif self.audit_function == 2:  # 基于Shadow model的membership inference 的审计办法
+        elif args.audit_function == 2:  # 基于Shadow model的membership inference 的审计办法
             self.EPS_LB = EPS_LB_SHADOWMI(D_0, D_1, num_classes, model, T)
             self.inference_accuary = self.EPS_LB.inference_acc
         else : #基于Poisoning Attack的审计办法
-            if self.binary_classifier == 0:
+            if args.binary_classifier == 0:
                 self.EPS_LB = EPS_LB_SmipleMI(D_0, D_1, num_classes, model, T)
                 self.inference_accuary = self.EPS_LB.inference_acc
-            elif self.binary_classifier == 1:
+            elif args.binary_classifier == 1:
                 self.EPS_LB = EPS_LB_Memorization(D_0, D_1, num_classes, model)
-            elif self.binary_classifier == 2:
+            elif args.binary_classifier == 2:
                 self.EPS_LB = EPS_LB_SHADOWMI(D_0, D_1, num_classes, model, T)
                 self.inference_accuary = self.EPS_LB.inference_acc
 
@@ -117,29 +117,31 @@ class EPS_LB_SHADOWMI:
     def _MI(self, y_in, pr_in, y_out, pr_out):
         res_in = self.T.predict(pr_in.cpu(), y_in.cpu(), batch=True)
         res_out = self.T.predict(pr_out.cpu(), y_out.cpu(), batch=True)
-        guess_1 = np.argmax(res_in, axis=1)  # 1:in 0:out
-        guess_2 = np.argmax(res_out, axis=1)
-        # 统计弃权次数,即均判断为D_1
-        abstain = np.where((guess_1 + guess_2) == 0)[0].size
-        count_sum = len(y_in) - abstain
-        # 统计成功次数,即(x,y)判断为D_0,(x,y')判断为D_1
-        count = np.where((guess_1 == 1) & (guess_2 == 0))[0].size
-        # 统计比较后成功次数,即(x,y)(x,y')均判断为D_0,但(x,y)可能性更大
-        compare_indx = np.where((guess_1 == 1) & (guess_2 == 1))[0]
-        compare_1 = res_in[:, 1][compare_indx]
-        compare_2 = res_out[:, 1][compare_indx]
-        count = count + np.where(compare_1 >= compare_2)[0].size
-        return count, count_sum
+        if res_in.shape[1]==1:
+            count = np.where(np.argmax(res_out, axis=1)==0)[0].size+len(y_in)
+            return count, 2*len(y_in)
+        else:
+            guess_1 = np.argmax(res_in, axis=1)  # 0:out 1:in
+            guess_2 = np.argmax(res_out, axis=1)
+            # 统计弃权次数,即均判断为D_1
+            abstain = np.where((guess_1 + guess_2) == 0)[0].size
+            count_sum = len(y_in) - abstain
+            # 统计成功次数,即(x,y)判断为D_0,(x,y')判断为D_1
+            count = np.where((guess_1 == 1) & (guess_2 == 0))[0].size
+            # 统计比较后成功次数,即(x,y)(x,y')均判断为D_0,但(x,y)可能性更大
+            compare_indx = np.where((guess_1 == 1) & (guess_2 == 1))[0]
+            compare_1 = res_in[:, 1][compare_indx]
+            compare_2 = res_out[:, 1][compare_indx]
+            count = count + np.where(compare_1 >= compare_2)[0].size
+            return count, count_sum
 
     def _eps_LB(self):
         # 计算最佳统计结果下的隐私损失ε_OPT
         x_in, y_in, x_out, y_out = get_X_y(self.D_0, self.D_1)
 
-        # count_sum = len(self.D_0) + len(self.D_1)
         # 根据模型获取置信度
         predict = predict_proba(x_in, self.model)
         # 基于影子模型隐私推理
-        # count = self._MI_in_train(y_in, predict_in) + self._MI_out_train(y_out, predict_out)
         count, count_sum = self._MI(y_in, predict, y_out, predict)
         # 计算ε_LB
         self.eps_OPT = eps_MI(len(y_in), len(y_in))

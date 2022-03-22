@@ -3,11 +3,7 @@ from copy import copy
 
 import torch
 from tqdm import tqdm_notebook
-import torch.utils.data as data
 import numpy as np
-import pandas as pd
-from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
-from sklearn.base import clone, BaseEstimator
 
 import utils
 from utils import Normal_Dataset, get_data_targets, predict_proba
@@ -33,11 +29,11 @@ class ShadowModels:
 
     y: ndarray or str
         if X it's a DataFrame then y must be the target column name,
-        otherwise 
+        otherwise
 
     n_models: int
         number of shadow models to build. Higher number returns
-        better results but is limited by the number of records 
+        better results but is limited by the number of records
         in the input data.
 
     target_classes: int
@@ -45,8 +41,8 @@ class ShadowModels:
         prediction array of the target model.
 
     learner: learner? #fix type
-        learner to use as shadow model. It must be as similar as 
-        possible to the target model. It must have `predict_proba` 
+        learner to use as shadow model. It must be as similar as
+        possible to the target model. It must have `predict_proba`
         method. Now only sklearn learners are implemented.
 
     Returns
@@ -103,7 +99,6 @@ class ShadowModels:
         class_partitions_y = []
         # Split by class
         for clss in classes:
-            # targets = [cifar.dataset.targets[i] for i in cifar.indices]
             X_clss = data[targets == clss]
             y_clss = targets[targets == clss]
             batch_size = len(X_clss) // n_splits
@@ -170,9 +165,7 @@ class ShadowModels:
         results = []
         for model, X_train, y_train, X_test, y_test in tqdm_notebook(
                 zip(self.models, self.train_splits[0], self.train_splits[1], self.test_splits[0], self.test_splits[1])):
-            net = model.train_model_without_DPandTest(Normal_Dataset((X_train, y_train)))
-
-
+            net = model.train(Normal_Dataset((X_train, y_train)))
             # data IN training set labeled 1
             X_train = torch.tensor(X_train).to(self.device)
             y_train = y_train.reshape(-1, 1)

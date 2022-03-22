@@ -1,13 +1,8 @@
-from typing import List, Tuple, Dict
-
-from tqdm import tqdm_notebook
-
+from copy import copy
 import numpy as np
-import pandas as pd
+from sklearn import clone
 
-from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
-from sklearn.base import clone
-
+from utils import Normal_Dataset
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -38,6 +33,7 @@ class AttackModels:
         self.attack_learner = attack_learner
         # 1 model for each class
         if attack_learner is not None:
+            # self.attack_models = [copy(self.attack_learner) for _ in range(target_classes)]
             self.attack_models = [clone(self.attack_learner) for _ in range(target_classes)]
 
         self._fited = False
@@ -65,7 +61,7 @@ class AttackModels:
         shadow_data: np.ndarray
             Shadow data. Results from `ShadowModels`.
             Last column (`[:,-1]`) must be the membership label of the shadow
-            prediction, where 1 means that the record was present in the 
+            prediction, where 1 means that the record was present in the
             shadow training set ('in') and 0 if the recored was in the test
             set ('out').
             Second last column (`[:,-2]`) must be the data class. this will
@@ -95,6 +91,7 @@ class AttackModels:
             # update model params
             self._update_learner_params(model, **learner_kwargs)
             # train model
+            # model.train(Normal_Dataset((X, y)))
             model.fit(X, y)
 
         self._fited = True

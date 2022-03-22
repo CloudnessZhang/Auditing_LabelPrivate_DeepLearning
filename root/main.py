@@ -5,14 +5,13 @@
 import argparse
 import os.path
 
-import numpy as np
 import torch
-from torch.utils.data import Subset, ConcatDataset
+import torchvision
 
 import utils
 from make_dataset import DataFactory
 from args.args_Setting import ALIBI_Settings, Audit_result
-from network.model import SUPPORTED_MODEL
+from network.model import SUPPORTED_MODEL, ResNet18,AttackModel
 from network.alibi_model import ALIBI
 from binary_classifier.inference import shadow_model, attack_model, base_MI
 from lower_bounding import lowerbound
@@ -26,7 +25,6 @@ def main(args):
     sess = utils.get_sess(args)
     print(sess)
 
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     audit_result = Audit_result
     audit_result.audit_function = args.audit_function
     if args.net.lower() == 'alibi':
@@ -41,6 +39,7 @@ def main(args):
     ###########################################################
     num_classes = DataFactory.K_TABLE[args.dataset.lower()]
 
+
     data_make = DataFactory.Data_Factory(args=args, setting=setting, num_classes=num_classes)
     train_set, test_set, D_0, D_1, shadow_train_set, shadow_test_set = data_make.get_data()
 
@@ -48,6 +47,7 @@ def main(args):
     # 在D0数据集上训练模型，得到模型和理论上的隐私损失
     ###########################################################
     # 输入train_set 和 test_set
+    print("执行 Label Private Deep Learning~")
     if args.net == 'alibi':
         alibi = ALIBI(train_set, test_set, num_classes, setting)
         model = alibi.train_model()
@@ -74,12 +74,14 @@ def main(args):
 
     attaker_path = os.path.join(setting.save_dir, 'attacker', save_name) + '.pickle'
 
+    print("生成 Binary Classifier~")
     if args.audit_function == 0:
         T = base_MI.BaseMI(train_set, model)
     elif args.audit_function == 1:
         T = None
     elif args.audit_function == 2:  # 基于Shadow model的审计方法
-        learner = ALIBI(None, None, num_classes, setting)  # resnet18
+        # learner = ALIBI(None, None, num_classes, setting)  # resnet18
+        learner = ResNet18(num_classes, setting)
         shm = shadow_model.ShadowModels(shadow_train_set, shadow_test_set, n_models=5,
                                         target_classes=num_classes, learner=learner,
                                         epochs=setting.learning.epochs,
@@ -93,11 +95,12 @@ def main(args):
         elif args.binary_classifier == 1:
             T = None
         else:
-            learner = ALIBI(None, None, num_classes, setting)  # resnet18
+            learner = ResNet18(num_classes,setting)
             shm = shadow_model.ShadowModels(shadow_train_set, shadow_test_set, n_models=5,
                                             target_classes=num_classes, learner=learner,
                                             epochs=setting.learning.epochs,
                                             verbose=0)
+            # rf_attack = AttackModel(setting)
             rf_attack = RandomForestClassifier(n_estimators=100)
             T = attack_model.AttackModels(target_classes=10, attack_learner=rf_attack)
             T.fit(shm.results)  # attack model
@@ -158,20 +161,20 @@ if __name__ == "__main__":
     parser.add_argument('--net', default='alibi', type=str, help='label private deep learning to be audited')
     parser.add_argument('--eps', default=0, type=float, help='privacy parameter epsilon')
     parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')
-    parser.add_argument('--sigma', default=2 * (2.0 ** 0.5) / 1, type=float,
+    parser.add_argument('--sigma', default=2 * (2.0 ** 0.5) / 8, type=float,
                         help='Guassion or Laplace perturbation coefficient')
-    parser.add_argument('--trials', default=10000, type=float, help='The number of sample labels changed is trials')
+    parser.add_argument('--trials', default=5000, type=float, help='The number of sample labels changed is trials')
     parser.add_argument('--audit_function', default=3, type=int, help='the function of auditing:'
                                                                       '0：based simple inference attack,'
                                                                       '1：based memorization attack,'
                                                                       '2: based shadow model inference attack,'
                                                                       '3：based poisoning attacked.')
-    parser.add_argument('--binary_classifier', default=0, type=int,
+    parser.add_argument('--binary_classifier', default=2, type=int,
                         help='the binary classifier to be combined with poisoned attack:'
                              '0: simple inference attack,'
                              '1: memorization attack,'
                              '2: shadow model inference attack')
-    parser.add_argument('--classed_random', default=True, type=bool, help='Whether to poison a specific target')
+    parser.add_argument('--classed_random', default=False, type=bool, help='Whether to poison a specific target')
     parser.add_argument('--poisoning_method', default=0, type=int, help='the Methods of constructing poisoned samples：'
                                                                         '0: D_0= argmin, D_1=true_labels'
                                                                         '1: D_0= argmax, D_1=argmin'
