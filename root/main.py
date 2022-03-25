@@ -124,7 +124,7 @@ def main(args):
     audit_result_path = os.path.join(setting.save_dir, 'audit_result', save_name) + '.pickle'
 
     # Result = lowerbound.LowerBound(D_0, D_1, num_classes,model, T, args.audit_function)
-    Result = lowerbound.LowerBound(D_0=D_0, D_1=D_1, num_classes=num_classes, model=model, T=T, args=args)
+    Result = lowerbound.LowerBound(D_0=D_0, D_1=D_1, num_classes=num_classes, model=model, T=T, args=args, epsilon_theory=audit_result.epsilon_theory)
 
     audit_result.epsilon_opt = Result.eps_OPT
     audit_result.epsilon_lb = Result.eps_LB
@@ -161,7 +161,7 @@ if __name__ == "__main__":
     parser.add_argument('--net', default='alibi', type=str, help='label private deep learning to be audited')
     parser.add_argument('--eps', default=0, type=float, help='privacy parameter epsilon')
     parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')
-    parser.add_argument('--sigma', default=2 * (2.0 ** 0.5) / 8, type=float,
+    parser.add_argument('--sigma', default=2 * (2.0 ** 0.5) / 0.5 , type=float,
                         help='Guassion or Laplace perturbation coefficient')
     parser.add_argument('--trials', default=5000, type=float, help='The number of sample labels changed is trials')
     parser.add_argument('--audit_function', default=3, type=int, help='the function of auditing:'
@@ -175,7 +175,7 @@ if __name__ == "__main__":
                              '1: memorization attack,'
                              '2: shadow model inference attack')
     parser.add_argument('--classed_random', default=False, type=bool, help='Whether to poison a specific target')
-    parser.add_argument('--poisoning_method', default=0, type=int, help='the Methods of constructing poisoned samples：'
+    parser.add_argument('--poisoning_method', default=2, type=int, help='the Methods of constructing poisoned samples：'
                                                                         '0: D_0= argmin, D_1=true_labels'
                                                                         '1: D_0= argmax, D_1=argmin'
                                                                         '2: D_0= argmax, D_1=true_labels')

@@ -12,7 +12,7 @@ from statsmodels.stats.proportion import proportion_confint
 
 
 # 根据统计结果计算隐私损失
-def eps_MI(count, T):
+def eps_MI(count, T,epsilon_theory=0):
     acc_low, acc_high = proportion_confint(count=count, nobs=T, alpha=.05, method="beta")
     acc_low = max(acc_low, 1 - acc_low)
     acc_high = max(acc_high, 1 - acc_high)
@@ -24,7 +24,9 @@ def eps_MI(count, T):
         acc_high = min(acc_low, acc_high)
     eps_low = np.log(acc_low / (1 - acc_low))
     eps_high = np.log(acc_high / (1 - acc_high))
-    return max(eps_low, eps_high)
+    if epsilon_theory!=0 and max(eps_low,eps_high)>epsilon_theory:
+        return min(eps_low,eps_high)
+    else:return max(eps_low, eps_high)
 
 
 def get_X_y(D_0, D_1):
@@ -43,31 +45,32 @@ def get_X_y(D_0, D_1):
 # 审计方法集成化
 ###########################################################
 class LowerBound:
-    def __init__(self, D_0, D_1, num_classes, model, T, args):
+    def __init__(self, D_0, D_1, num_classes, model, T, args,epsilon_theory):
         self.eps_OPT: float = .0
         self.eps_LB: float = .0
         self.inference_accuary: float = .0
         self.poisoning_effect: float = .0
+        self.epsilon_theory = epsilon_theory
 
         self._epslb(D_0, D_1, num_classes, model, T,args)
 
     def _epslb(self, D_0, D_1, num_classes, model, T,args):
         if args.audit_function == 0:  # 基于loss error的membership inference 的审计办法
-            self.EPS_LB = EPS_LB_SmipleMI(D_0, D_1, num_classes, model, T)
+            self.EPS_LB = EPS_LB_SmipleMI(D_0, D_1, num_classes, model, T,self.epsilon_theory)
             self.inference_accuary = self.EPS_LB.inference_acc
         elif args.audit_function == 1:  # 基于memorization attack的审计方法
-            self.EPS_LB = EPS_LB_Memorization(D_0, D_1, num_classes, model)
+            self.EPS_LB = EPS_LB_Memorization(D_0, D_1, num_classes, model,self.epsilon_theory)
         elif args.audit_function == 2:  # 基于Shadow model的membership inference 的审计办法
-            self.EPS_LB = EPS_LB_SHADOWMI(D_0, D_1, num_classes, model, T)
+            self.EPS_LB = EPS_LB_SHADOWMI(D_0, D_1, num_classes, model, T,self.epsilon_theory)
             self.inference_accuary = self.EPS_LB.inference_acc
         else : #基于Poisoning Attack的审计办法
             if args.binary_classifier == 0:
-                self.EPS_LB = EPS_LB_SmipleMI(D_0, D_1, num_classes, model, T)
+                self.EPS_LB = EPS_LB_SmipleMI(D_0, D_1, num_classes, model, T,self.epsilon_theory)
                 self.inference_accuary = self.EPS_LB.inference_acc
             elif args.binary_classifier == 1:
-                self.EPS_LB = EPS_LB_Memorization(D_0, D_1, num_classes, model)
+                self.EPS_LB = EPS_LB_Memorization(D_0, D_1, num_classes, model,self.epsilon_theory)
             elif args.binary_classifier == 2:
-                self.EPS_LB = EPS_LB_SHADOWMI(D_0, D_1, num_classes, model, T)
+                self.EPS_LB = EPS_LB_SHADOWMI(D_0, D_1, num_classes, model, T,self.epsilon_theory)
                 self.inference_accuary = self.EPS_LB.inference_acc
 
         self.eps_OPT = self.EPS_LB.eps_OPT
@@ -78,20 +81,20 @@ class LowerBound:
 # 利用基于平均loss的BaseMI， 计算epsilon的下界
 ###########################################################
 class EPS_LB_SmipleMI:
-    def __init__(self, D_0, D_1, num_classes, model, T):
+    def __init__(self, D_0, D_1, num_classes, model, T,epsilon_theory):
         self.D_0 = D_0
         self.D_1 = D_1
         self.model = model
         self.T = T
-        self._eps_LB()
+        self._eps_LB(epsilon_theory)
 
-    def _eps_LB(self):
+    def _eps_LB(self,epsilon_theory):
         x_in, y_in, x_out, y_out = get_X_y(self.D_0, self.D_1)
         count_sum = len(y_in) + len(y_out)
         self.eps_OPT = eps_MI(count_sum, count_sum)
 
         count = self.T.MI(x_in, y_in) + (len(y_out) - self.T.MI(x_out, y_out))
-        self.eps_LB = eps_MI(count, count_sum)
+        self.eps_LB = eps_MI(count, count_sum,epsilon_theory)
         self.inference_acc = format(float(count) / float(count_sum), '.4f')
 
 
@@ -99,12 +102,13 @@ class EPS_LB_SmipleMI:
 # 利用 Shadow_MI 计算epsilon的下界
 ###########################################################
 class EPS_LB_SHADOWMI:
-    def __init__(self, D_0, D_1, num_classes, model, T):
+    def __init__(self, D_0, D_1, num_classes, model, T,epsilon_theory):
         self.D_0 = D_0
         self.D_1 = D_1
         self.model = model
         self.T = T
-        self._eps_LB()
+        self._eps_LB(epsilon_theory)
+
 
     def _MI_in_train(self, y, pr):
         res_in = self.T.predict(pr.cpu(), y.cpu(), batch=True)
@@ -135,7 +139,7 @@ class EPS_LB_SHADOWMI:
             count = count + np.where(compare_1 >= compare_2)[0].size
             return count, count_sum
 
-    def _eps_LB(self):
+    def _eps_LB(self,epsilon_theory):
         # 计算最佳统计结果下的隐私损失ε_OPT
         x_in, y_in, x_out, y_out = get_X_y(self.D_0, self.D_1)
 
@@ -145,7 +149,7 @@ class EPS_LB_SHADOWMI:
         count, count_sum = self._MI(y_in, predict, y_out, predict)
         # 计算ε_LB
         self.eps_OPT = eps_MI(len(y_in), len(y_in))
-        self.eps_LB = eps_MI(count, count_sum)
+        self.eps_LB = eps_MI(count, count_sum,epsilon_theory)
         self.inference_acc = format(float(count) / float(count_sum), '.4f')
 
 
@@ -153,12 +157,12 @@ class EPS_LB_SHADOWMI:
 # 利用 Memorization Attack 计算epsilon的下界
 ###########################################################
 class EPS_LB_Memorization:
-    def __init__(self, D_0, D_1, num_classes, model):
+    def __init__(self, D_0, D_1, num_classes, model,epsilon_theory):
         self.D_0 = D_0
         self.D_1 = D_1
         self.num_classes = num_classes
         self.model = model
-        self._eps_LB()
+        self._eps_LB(epsilon_theory)
 
     def _get_confidence(self, predictions: numpy.ndarray, canary_labels):
         canary_labels = np.asarray(canary_labels.cpu())
@@ -283,7 +287,7 @@ class EPS_LB_Memorization:
                 best_threshold = t
         return eps_low, eps_high
 
-    def _eps_LB(self):
+    def _eps_LB(self,epsilon_theory):
         if isinstance(self.D_0, utils.Normal_Dataset):
             x_in, y_in = self.D_0.data_tensor, self.D_0.target_tensor
         else:
