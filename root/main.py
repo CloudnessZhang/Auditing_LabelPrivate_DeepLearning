@@ -13,7 +13,7 @@ from make_dataset import DataFactory
 from args.args_Setting import ALIBI_Settings, Audit_result,LPMST_Settings
 from network.model import SUPPORTED_MODEL, ResNet18,AttackModel
 from network.alibi_model import ALIBI
-from network.
+from network.lpmst_model import LPMST
 from binary_classifier.inference import shadow_model, attack_model, base_MI
 from lower_bounding import lowerbound
 from sklearn.ensemble import RandomForestClassifier
@@ -55,13 +55,14 @@ def main(args):
     # 输入train_set 和 test_set
     print("执行 Label Private Deep Learning~")
     if args.net == 'alibi':
-        alibi = ALIBI(train_set, test_set, num_classes, setting)
-        model = alibi.train_model()
-        audit_result.epsilon_theory = alibi.get_eps()
-        audit_result.model_accuary = alibi.acc
-        audit_result.model_loss = alibi.loss
+        label_model = ALIBI(train_set, test_set, num_classes, setting)
     elif args.net == 'lp-mst':
-        lp_mst = LPMST
+        label_model = LPMST(train_set,test_set,num_classes,setting)
+    model = label_model.train_model()
+    audit_result.epsilon_theory = label_model.get_eps()
+    audit_result.model_accuary = label_model.acc
+    audit_result.model_loss = label_model.loss
+
 
     save_name = utils.save_name(setting.learning.epochs, audit_result.epsilon_theory,args)
     model_path = os.path.join(setting.save_dir, 'model', save_name) + '.pth'
@@ -165,9 +166,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Auditing Label Private Deep Learning')  # argparse 命令行参数解析器
 
-    parser.add_argument('--dataset', default='cifar100', type=str, help='dataset name')
+    parser.add_argument('--dataset', default='mnist', type=str, help='dataset name')
     parser.add_argument('--net', default='lp-mst', type=str, help='label private deep learning to be audited')
-    parser.add_argument('--eps', default=0, type=float, help='privacy parameter epsilon')
+    parser.add_argument('--eps', default=1, type=float, help='privacy parameter epsilon')
     parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')
     parser.add_argument('--sigma', default=2 * (2.0 ** 0.5) / 0.5 , type=float,
                         help='Guassion or Laplace perturbation coefficient')

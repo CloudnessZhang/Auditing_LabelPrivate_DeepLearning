@@ -11,6 +11,7 @@ import ssl
 
 import utils
 from network.alibi_model import ALIBI
+from network.lpmst_model import LPMST
 
 ssl._create_default_https_context = ssl._create_unverified_context  # 解决cifar10下载报错问题
 
@@ -372,9 +373,15 @@ class Data_Factory:
             return train_set, test_set, train_set, D_1, train_set, D_1
         else:  # 基于poisoning attack的审计方法
             if self.args.net == 'alibi':
-                alibi_make_poison = ALIBI(trainset=data_load.get_train_set(), testset=data_load.get_test_set(),
+                label_model_make_poison = ALIBI(trainset=data_load.get_train_set(), testset=data_load.get_test_set(),
                                           num_classes=self.num_classes, setting=self.setting)
-                model_make_poison = alibi_make_poison.train_model()
+            elif self.args.net == 'lp-mst':
+                # 将train_set 进行划分
+                train_set_list = utils.partition(data_load.get_train_set(), 2)
+                label_model_make_poison = LPMST(train_set_list, testset=data_load.get_test_set(),
+                                          num_classes=self.num_classes, setting=self.setting)
+            model_make_poison = label_model_make_poison.train_model()
+
             poisoned_dataset = Poisoned_Dataset(data_load.get_train_set(), model=model_make_poison,
                                                 num_classes=self.num_classes,
                                                 trials=self.args.trials, seed=self.setting.seed,

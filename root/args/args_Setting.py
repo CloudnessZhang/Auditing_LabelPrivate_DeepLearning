@@ -58,7 +58,7 @@ class ALIBI_Settings:
 @dataclass
 class LPMST_Learning:
     lr: float = 0.1
-    batch_size: int = 128
+    batch_size: int = 64
     # epochs: int = 150
     epochs: int = 1
     momentum: float = 0.9
@@ -68,6 +68,7 @@ class LPMST_Learning:
 class LPMST_Settings:
     dataset: str = "cifar10"
     epsilon: float = 1.
+    # alpha: float = 4.
     learning: LPMST_Learning = LPMST_Learning()
     save_dir: str = "../result"
     data_dir: str = "../datasets"

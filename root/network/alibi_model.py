@@ -518,7 +518,6 @@ class ALIBI:
     def _train(self, model, train_loader, optimizer, criterion, epoch):
         model.train()
         losses = []
-        losses = []
         acc = []
         for i, batch in enumerate(tqdm(train_loader)):
             images = batch[0].to(self.device)  # x
@@ -547,6 +546,10 @@ class ALIBI:
             f"Loss: {np.mean(losses):.6f} ",
             f"Acc: {np.mean(acc) :.6f} ",
         )
+
+        if(np.mean(losses) < self.loss or self.loss==.0):
+            self.loss = np.mean(losses)
+
         return np.mean(acc), np.mean(losses)
 
     def _test(self, model, test_loader, criterion, epoch):
@@ -575,8 +578,7 @@ class ALIBI:
         )
         if(np.mean(acc) > self.acc):
             self.acc = np.mean(acc)
-        if(np.mean(losses) < self.loss or self.loss==.0):
-            self.loss = np.mean(losses)
+
         return np.mean(acc), np.mean(losses)
 
     def _adjust_learning_rate(self, optimizer, epoch, lr):
