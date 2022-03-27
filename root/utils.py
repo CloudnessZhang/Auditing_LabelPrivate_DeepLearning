@@ -150,3 +150,18 @@ def read_Class(class_rd, path):
     class_rd = pickle.load(in_f)
     in_f.close()
     return class_rd
+
+def partition(dataset, T) -> list:
+    """训练集无交集划分
+
+    @param dataset: 训练集
+    @param T: 划分批次
+    @return: 划分后的子集列表
+    """
+    data_list = []
+    n_len = len(dataset)
+    step = n_len // T
+    for t in range(T):
+        subset = Subset(dataset, list(range(step * t, step * (t + 1))))
+        data_list.append(subset)
+    return data_list

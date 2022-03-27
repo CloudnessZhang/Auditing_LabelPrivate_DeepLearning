@@ -132,6 +132,8 @@ class AttackModels:
                 X_cls = X[y == model_cls]
                 model = self.attack_models[model_cls]
                 attack_res = model.predict_proba(X_cls)
+                if attack_res.shape[1] == 1:
+                    attack_res = np.column_stack((attack_res,np.zeros_like(attack_res)))
                 res.append(attack_res)
 
             return np.concatenate(res)

@@ -121,7 +121,7 @@ class EPS_LB_SHADOWMI:
     def _MI(self, y_in, pr_in, y_out, pr_out):
         res_in = self.T.predict(pr_in.cpu(), y_in.cpu(), batch=True)
         res_out = self.T.predict(pr_out.cpu(), y_out.cpu(), batch=True)
-        if res_in.shape[1]==1:
+        if np.sum(np.where(res_in[:,0]==1.))== len(y_in):
             count = np.where(np.argmax(res_out, axis=1)==0)[0].size+len(y_in)
             return count, 2*len(y_in)
         else:

@@ -30,14 +30,20 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 # MNIST
 ## mnist 手写数字体
 ## 60,000个训练样本，10,000个测试样本，每个样本28*28，10分类：0~9
-MNIST_MEAN = 0.1307
-MNIST_STD = 0.3081
-MNIST_TRANS = transforms.Compose(
-    [
+# MNIST_MEAN = 0.1307
+# MNIST_STD = 0.3081
+# MNIST_TRANS = transforms.Compose(
+#     [
+#         transforms.ToTensor(),
+#         transforms.Normalize((MNIST_MEAN,), (MNIST_STD,))
+#     ]
+# )
+MNIST_TRANS = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.Grayscale(3),
         transforms.ToTensor(),
-        transforms.Normalize((MNIST_MEAN,), (MNIST_STD,))
-    ]
-)
+        transforms.Normalize((0.1307,0.1307,0.1307), (0.3081,0.3081,0.3081)),
+    ])
 
 # CIFAR 10
 # cifar10 50,000个训练样本，10,000个测试样本，每个样本32*32*3，10分类，每类6,000个样本
@@ -173,10 +179,19 @@ class Poisoned_Dataset:
         return rand_positions, x, np.asarray(y.cpu())
 
     def _rand_sample_specific(self):
-        target_class = 0
         # 在指定类：0中,随机选择N个样本,返回对应的位置和target
         labels, targets = utils.get_data_targets(self.dataset)
-        inds = np.where(np.asarray(targets.cpu()) == target_class)[0].tolist()
+
+        if len(self.dataset.classes)==100:
+            target_classes = list(range(10))
+            inds = []
+            for target_class in target_classes:
+                ind = np.where(np.asarray(targets.cpu()) == target_class)[0].tolist()
+                inds.extend(ind)
+
+        else:
+            target_class = 0
+            inds = np.where(np.asarray(targets.cpu()) == target_class)[0].tolist()
 
         assert len(inds) >= self.poison_num
 
@@ -368,4 +383,6 @@ class Data_Factory:
             return poisoned_dataset.dataset,test_set,poisoned_dataset.D_0,poisoned_dataset.D_1,train_set,poisoned_dataset.D_1
 
     def get_data(self):
+        if self.args.dataset.lower() == 'lp-mst':
+            self.train_set = utils.partition(self.train_set,2)
         return self.train_set, self.test_set, self.D_0, self.D_1, self.shadow_train_set, self.shadow_test_set

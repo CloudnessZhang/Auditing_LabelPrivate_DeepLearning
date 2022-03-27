@@ -10,9 +10,10 @@ import torchvision
 
 import utils
 from make_dataset import DataFactory
-from args.args_Setting import ALIBI_Settings, Audit_result
+from args.args_Setting import ALIBI_Settings, Audit_result,LPMST_Settings
 from network.model import SUPPORTED_MODEL, ResNet18,AttackModel
 from network.alibi_model import ALIBI
+from network.
 from binary_classifier.inference import shadow_model, attack_model, base_MI
 from lower_bounding import lowerbound
 from sklearn.ensemble import RandomForestClassifier
@@ -32,6 +33,11 @@ def main(args):
         setting.dataset = args.dataset.lower()
         setting.privacy.sigma = args.sigma
         setting.privacy.delta = args.delta
+    elif args.net.lower() == 'lp-mst':
+        setting = LPMST_Settings
+        setting.dataset = args.dataset.lower()
+        setting.epsilon = args.eps
+        audit_result.epsilon_theory = args.eps
 
     utils.make_deterministic(setting.seed)  # 随机种子设置
     ###########################################################
@@ -54,6 +60,8 @@ def main(args):
         audit_result.epsilon_theory = alibi.get_eps()
         audit_result.model_accuary = alibi.acc
         audit_result.model_loss = alibi.loss
+    elif args.net == 'lp-mst':
+        lp_mst = LPMST
 
     save_name = utils.save_name(setting.learning.epochs, audit_result.epsilon_theory,args)
     model_path = os.path.join(setting.save_dir, 'model', save_name) + '.pth'
@@ -102,7 +110,7 @@ def main(args):
                                             verbose=0)
             # rf_attack = AttackModel(setting)
             rf_attack = RandomForestClassifier(n_estimators=100)
-            T = attack_model.AttackModels(target_classes=10, attack_learner=rf_attack)
+            T = attack_model.AttackModels(target_classes=num_classes, attack_learner=rf_attack)
             T.fit(shm.results)  # attack model
     # 保存attacker
     utils.save_Class(T, attaker_path)
@@ -157,8 +165,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Auditing Label Private Deep Learning')  # argparse 命令行参数解析器
 
-    parser.add_argument('--dataset', default='cifar10', type=str, help='dataset name')
-    parser.add_argument('--net', default='alibi', type=str, help='label private deep learning to be audited')
+    parser.add_argument('--dataset', default='cifar100', type=str, help='dataset name')
+    parser.add_argument('--net', default='lp-mst', type=str, help='label private deep learning to be audited')
     parser.add_argument('--eps', default=0, type=float, help='privacy parameter epsilon')
     parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')
     parser.add_argument('--sigma', default=2 * (2.0 ** 0.5) / 0.5 , type=float,
