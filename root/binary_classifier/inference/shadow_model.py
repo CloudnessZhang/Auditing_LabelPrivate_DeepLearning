@@ -91,10 +91,7 @@ class ShadowModels:
         if isinstance(data_set, utils.Normal_Dataset):
             data, targets = data_set.data_tensor, data_set.target_tensor
         else:
-            labels, targets = data_set.data, data_set.targets
-            if dataname == 'cifar10':
-                labels = labels.transpose(0, 3, 2, 1)
-            # data, targets = get_data_targets(data_set)
+            data, targets = get_data_targets(data_set,dataname)
 
         classes = range(n_classes)
         class_partitions_X = []

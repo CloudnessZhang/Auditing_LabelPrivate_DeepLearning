@@ -264,13 +264,13 @@ class Poisoned_Dataset:
             # 取argmax or second
             self.dataset = self._D_argmax_min(rand_class)
         else:  # D_0= argmax, D_1=true_labels
-            self.dataset = self._D_argmax_true(rand_class)
+            self._D_argmax_true(rand_class)
 
         assert torch.sum(self.D_0.target_tensor == self.D_1.target_tensor) == 0, "Make Dataset Error"
 
     def _rand_sample_rand(self):
         # 任意类中,随机选择N个样本,返回对应的位置和target
-        labels, targets = utils.get_data_targets(self.dataset)
+        labels, targets = utils.get_data_targets(self.dataset,self.dataname)
         np.random.seed(self.seed)
         rand_positions = np.random.choice(len(self.dataset.targets), self.poison_num, replace=False)
         # 获取随机选中的x,y
@@ -281,28 +281,20 @@ class Poisoned_Dataset:
 
     def _rand_sample_specific(self):
         # 在指定类：0中,随机选择N个样本,返回对应的位置和target
-        # labels, targets = utils.get_data_targets(self.dataset)
-        labels, targets = self.dataset.data, self.dataset.targets
-        if self.dataname == 'cifar10':
-            labels = labels.transpose(0, 3, 2, 1)
-
-        if len(self.dataset.classes) == 100:
-            target_classes = list(range(10))
-            inds = []
-            for target_class in target_classes:
-                ind = np.where(np.asarray(targets) == target_class)[0].tolist()
-                inds.extend(ind)
-
-        else:
-            target_class = 0
-            inds = np.where(np.asarray(targets) == target_class)[0].tolist()
+        labels, targets = utils.get_data_targets(self.dataset,self.dataname)
+        target_class = 0
+        inds = np.where(np.asarray(targets.cpu()) == target_class)[0].tolist()
+        while len(inds) < self.poison_num:
+            target_class += 1
+            ind = np.where(np.asarray(targets.cpu()) == target_class)[0].tolist()
+            inds.extend(ind)
 
         assert len(inds) >= self.poison_num
 
         np.random.seed(self.seed)
         rand_positions = np.random.choice(inds, self.poison_num, replace=False)
         # 获取随机选中的x,y
-        y = np.asarray(targets)[rand_positions]
+        y = np.asarray(targets.cpu())[rand_positions]
         x = labels[rand_positions]
         self.rand_positions = rand_positions
         return rand_positions, x, y
@@ -313,6 +305,7 @@ class Poisoned_Dataset:
             poisoned_positions, orignal_x, orignal_y = self._rand_sample_rand()  # 随机选择trials个样本
         else:
             poisoned_positions, orignal_x, orignal_y = self._rand_sample_specific()  # 在指定类中随机选择trials个样本
+            # 均为array格式
 
         predictions = utils.predict_proba(orignal_x, self.model)  # 得到先验知识pr
         # 构造投毒样本argmin
@@ -374,18 +367,20 @@ class Poisoned_Dataset:
         self.D_0 = utils.Normal_Dataset((orignal_x, poisoned_y))
         self.D_1 = utils.Normal_Dataset((orignal_x, orignal_y))
 
-        dataset = self.dataset
-
-        targets = np.asarray(dataset.targets)
+        if isinstance(self.dataset,Subset):
+            targets = np.asarray(self.dataset.dataset.targets)[self.dataset.indices]
+        else:
+            targets = np.asarray(self.dataset.targets)
         targets[poisoned_positions] = poisoned_y.cpu()
-        dataset.targets = list(targets)
+        self.dataset.targets = list(targets)
 
-        return dataset
+        return self.dataset
 
 
 class Canaries_Dataset:
-    def __init__(self, dataset, num_classes, trials, seed):
+    def __init__(self, dataset,dataname, num_classes, trials, seed):
         self.dataset = dataset
+        self.dataname = dataname
         self.num_classes = num_classes
         self.num = trials
         self.seed = seed
@@ -393,7 +388,7 @@ class Canaries_Dataset:
         assert torch.sum(self.D_0.target_tensor == self.D_1.target_tensor) == 0, "Make Dataset Error"
 
     def _rand_pos_and_labels(self):
-        labels, targets = utils.get_data_targets(self.dataset)
+        labels, targets = utils.get_data_targets(self.dataset,self.dataname)
         np.random.seed(self.seed)
         rand_positions = np.random.choice(len(self.dataset.targets), self.num, replace=False)
         # 获取随机选中的x,y
@@ -469,7 +464,7 @@ class Data_Factory:
             D_1 = get_D1(data_load.get_train_set(), self.num_classes)
             return train_set, test_set, train_set, D_1, None, None
         elif self.args.audit_function == 1:  # 基于memorization attack的审计方法
-            canaries_dataset = Canaries_Dataset(data_load.get_train_set(), self.num_classes, self.args.trials,
+            canaries_dataset = Canaries_Dataset(data_load.get_train_set(), self.args.dataset.lower(), self.num_classes, self.args.trials,
                                                 self.setting.seed)  # trials 个标签翻转
             return canaries_dataset.dataset, test_set, canaries_dataset.D_0, canaries_dataset.D_1, None, None
         elif self.args.audit_function == 2:  # 基于Shadow model的membership inference 的审计办法
@@ -477,26 +472,32 @@ class Data_Factory:
             return train_set, test_set, train_set, D_1, train_set, D_1
         else:  # 基于poisoning attack的审计方法
             if self.args.net == 'alibi':
-                label_model_make_poison = ALIBI(trainset=data_load.get_train_set(), testset=data_load.get_test_set(),
+                alibi_model_make_poison = ALIBI(trainset=data_load.get_train_set(), testset=data_load.get_test_set(),
                                                 num_classes=self.num_classes, setting=self.setting)
+                model_make_poison = alibi_model_make_poison.train_model()
+                poisoned_dataset = Poisoned_Dataset(data_load.get_train_set(),
+                                                    self.args.dataset.lower(),
+                                                    model=model_make_poison,
+                                                    num_classes=self.num_classes,
+                                                    trials=self.args.trials, seed=self.setting.seed,
+                                                    rand_class=self.args.classed_random,
+                                                    pois_func=self.args.poisoning_method)
+                return poisoned_dataset.dataset, test_set, poisoned_dataset.D_0,poisoned_dataset.D_1, poisoned_dataset.dataset, poisoned_dataset.D_1
             elif self.args.net == 'lp-mst':
                 train_set_list = utils.partition(data_load.get_train_set(), 2)
-                label_model_make_poison = LPMST(train_set_list, testset=data_load.get_test_set(),
+                lpmst_model_make_poison = LPMST(train_set_list, testset=data_load.get_test_set(),
                                                 num_classes=self.num_classes, setting=self.setting)
-
-            model_make_poison = label_model_make_poison.train_model()
-
-            poisoned_dataset = Poisoned_Dataset(data_load.get_train_set(),
-                                                self.args.dataset.lower(),
-                                                model=model_make_poison,
-                                                num_classes=self.num_classes,
-                                                trials=self.args.trials, seed=self.setting.seed,
-                                                rand_class=self.args.classed_random,
-                                                pois_func=self.args.poisoning_method)
-            if self.args.net == 'lp-mst':
-                train_set_list = utils.partition(poisoned_dataset.dataset, 2)
-                return train_set_list, test_set, poisoned_dataset.D_0, poisoned_dataset.D_1, train_set, poisoned_dataset.D_1
-            return poisoned_dataset.dataset, test_set, poisoned_dataset.D_0, poisoned_dataset.D_1, train_set, poisoned_dataset.D_1
+                model_make_poison = lpmst_model_make_poison.train_model()
+                # 只对第二个样本进行投毒
+                poisoned_dataset = Poisoned_Dataset(train_set_list[1],
+                                                    self.args.dataset.lower(),
+                                                    model=model_make_poison,
+                                                    num_classes=self.num_classes,
+                                                    trials=self.args.trials, seed=self.setting.seed,
+                                                    rand_class=self.args.classed_random,
+                                                    pois_func=self.args.poisoning_method)
+                train_set_list[1] = poisoned_dataset.dataset
+                return train_set_list, test_set, poisoned_dataset.D_0, poisoned_dataset.D_1, train_set_list[1], poisoned_dataset.D_1
 
     def get_data(self):
         if self.args.dataset.lower() == 'lp-mst':

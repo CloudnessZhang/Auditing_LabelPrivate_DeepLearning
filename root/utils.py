@@ -51,19 +51,14 @@ def partition(dataset, proportion: float) -> list:
     return subset1, subset2
 
 
-def get_data_targets(dataset):
-    data_loader = DataLoader(
-        dataset,
-        batch_size=1,
-        shuffle=False
-    )
-
-    x, y = [], []
-    for i, (data, label) in enumerate(data_loader):
-        x.append(torch.squeeze(data))
-        y.append(torch.squeeze(label))
-    return torch.stack(x).to(device), torch.tensor(y).to(device)
-
+def get_data_targets(dataset,dataname):
+    if isinstance(dataset,Subset):
+        data, targets = dataset.dataset.data[dataset.indices], np.asarray(dataset.dataset.targets)[dataset.indices]
+    else:
+        data, targets = dataset.data, dataset.targets
+    if dataname == 'cifar10':
+        data = data.transpose(0, 3, 2, 1)
+    return torch.from_numpy(data).to(device),torch.tensor(targets).to(device)
 
 def predict_proba(X, net):
     Xloader = DataLoader(X, 128, shuffle=False)

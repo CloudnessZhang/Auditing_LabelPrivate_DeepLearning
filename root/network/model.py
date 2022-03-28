@@ -59,7 +59,7 @@ class ResNet18:
             acc = []
             # train for one epoch
             for i, (images, target) in enumerate(train_loader):
-                images = images.to(self.device)
+                images = images.float().to(self.device)
                 target = target.to(self.device)
                 optimizer.zero_grad()
                 output = model(images)

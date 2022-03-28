@@ -33,10 +33,12 @@ def main(args):
         setting.dataset = args.dataset.lower()
         setting.privacy.sigma = args.sigma
         setting.privacy.delta = args.delta
+        setting.learning.epochs = args.epoch
     elif args.net.lower() == 'lp-mst':
         setting = LPMST_Settings
         setting.dataset = args.dataset.lower()
         setting.epsilon = args.eps
+        setting.learning.epochs = args.epoch
         audit_result.epsilon_theory = args.eps
 
     utils.make_deterministic(setting.seed)  # 随机种子设置
@@ -85,7 +87,7 @@ def main(args):
 
     print("生成 Binary Classifier~")
     if args.audit_function == 0:
-        T = base_MI.BaseMI(train_set, model)
+        T = base_MI.BaseMI(datasets=train_set, dataname=args.dataset.lower(), net=model)
     elif args.audit_function == 1:
         T = None
     elif args.audit_function == 2:  # 基于Shadow model的审计方法
@@ -100,7 +102,7 @@ def main(args):
         T.fit(shm.results)  # attack model
     else:#audit_function == 3
         if args.binary_classifier == 0:
-            T = base_MI.BaseMI(train_set, model)
+            T = base_MI.BaseMI(datasets=train_set, dataname=args.dataset.lower(), net=model)
         elif args.binary_classifier == 1:
             T = None
         else:
@@ -168,6 +170,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--dataset', default='cifar10', type=str, help='dataset name')
     parser.add_argument('--net', default='lp-mst', type=str, help='label private deep learning to be audited')
+    parser.add_argument('--epoch',default=10, type=int, help='the epoch model trains')
     parser.add_argument('--eps', default=1, type=float, help='privacy parameter epsilon')
     parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')
     parser.add_argument('--sigma', default=2 * (2.0 ** 0.5) / 0.5 , type=float,
