@@ -141,16 +141,3 @@ def main(
     torch.save(model.state_dict(), model_path)
 
     logging.info(f"Finished training. Reported accuracy: {acc}, eps={eps}")
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-
-    parser = ArgumentParser()
-
-    parser.add_argument("--device", type=str, default="cpu", help="Training device")
-    parser.add_arguments(PateCommonConfig, dest="common")
-    parser.add_arguments(PateStudentConfig, dest="student")
-
-    args = parser.parse_args()
-    main(config_common=args.common, config_student=args.student, device=args.device)

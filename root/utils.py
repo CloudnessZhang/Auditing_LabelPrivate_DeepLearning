@@ -51,7 +51,7 @@ def partition(dataset, proportion: float) -> list:
     return subset1, subset2
 
 
-def get_data_targets(dataset: Subset):
+def get_data_targets(dataset):
     data_loader = DataLoader(
         dataset,
         batch_size=1,
@@ -70,7 +70,7 @@ def predict_proba(X, net):
     torch.cuda.empty_cache()
     with torch.no_grad():
         for i, x_batch in enumerate(Xloader):
-            y = f.softmax(net(x_batch))
+            y = f.softmax(net(x_batch.float().to(device)))
             if i == 0:
                 y_prob = y
             else:

@@ -91,7 +91,7 @@ def main(args):
     elif args.audit_function == 2:  # 基于Shadow model的审计方法
         # learner = ALIBI(None, None, num_classes, setting)  # resnet18
         learner = ResNet18(num_classes, setting)
-        shm = shadow_model.ShadowModels(shadow_train_set, shadow_test_set, n_models=5,
+        shm = shadow_model.ShadowModels(args.dataset.lower(),shadow_train_set, shadow_test_set, n_models=5,
                                         target_classes=num_classes, learner=learner,
                                         epochs=setting.learning.epochs,
                                         verbose=0)
@@ -105,7 +105,7 @@ def main(args):
             T = None
         else:
             learner = ResNet18(num_classes,setting)
-            shm = shadow_model.ShadowModels(shadow_train_set, shadow_test_set, n_models=5,
+            shm = shadow_model.ShadowModels(args.dataset.lower(),shadow_train_set, shadow_test_set, n_models=5,
                                             target_classes=num_classes, learner=learner,
                                             epochs=setting.learning.epochs,
                                             verbose=0)
@@ -166,7 +166,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Auditing Label Private Deep Learning')  # argparse 命令行参数解析器
 
-    parser.add_argument('--dataset', default='mnist', type=str, help='dataset name')
+    parser.add_argument('--dataset', default='cifar10', type=str, help='dataset name')
     parser.add_argument('--net', default='lp-mst', type=str, help='label private deep learning to be audited')
     parser.add_argument('--eps', default=1, type=float, help='privacy parameter epsilon')
     parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')

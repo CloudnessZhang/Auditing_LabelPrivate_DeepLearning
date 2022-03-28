@@ -12,6 +12,9 @@ import ssl
 import utils
 from network.alibi_model import ALIBI
 from network.lpmst_model import LPMST
+from network.pate.randaugment import RandAugmentMC
+from torch.utils.data import Subset
+
 
 ssl._create_default_https_context = ssl._create_unverified_context  # 解决cifar10下载报错问题
 
@@ -24,6 +27,42 @@ K_TABLE = {
 }
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+def random_subset(dataset, n_samples, seed):
+    random.seed(seed)
+    indices = list(range(len(dataset)))
+    random.shuffle(indices)
+
+    return Subset(dataset, indices=indices[:n_samples])
+
+class TransformFixMatch(object):
+    def __init__(self, mean, std):
+        self.weak = transforms.Compose(
+            [
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomCrop(
+                    size=32, padding=int(32 * 0.125), padding_mode="reflect"
+                ),
+            ]
+        )
+        self.strong = transforms.Compose(
+            [
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomCrop(
+                    size=32, padding=int(32 * 0.125), padding_mode="reflect"
+                ),
+                RandAugmentMC(n=2, m=10),
+            ]
+        )
+        self.normalize = transforms.Compose(
+            [transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)]
+        )
+
+    def __call__(self, x):
+        weak = self.weak(x)
+        strong = self.strong(x)
+        return self.normalize(weak), self.normalize(strong)
+
 
 ###########################################################
 # 下载数据集
@@ -39,12 +78,16 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 #         transforms.Normalize((MNIST_MEAN,), (MNIST_STD,))
 #     ]
 # )
+MNIST_MEAN = (0.1307, 0.1307, 0.1307)
+MNIST_STD = (0.3081, 0.3081, 0.3081)
 MNIST_TRANS = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.Grayscale(3),
-        transforms.ToTensor(),
-        transforms.Normalize((0.1307,0.1307,0.1307), (0.3081,0.3081,0.3081)),
-    ])
+    transforms.Resize((224, 224)),
+    transforms.Grayscale(3),
+    transforms.ToTensor(),
+    transforms.Normalize(MNIST_MEAN, MNIST_STD),
+])
+
+MNIST_UNLABELED_TRANS = TransformFixMatch(mean=MNIST_MEAN, std=MNIST_STD)
 
 # CIFAR 10
 # cifar10 50,000个训练样本，10,000个测试样本，每个样本32*32*3，10分类，每类6,000个样本
@@ -53,9 +96,9 @@ CIFAR10_STD = (0.2023, 0.1994, 0.2010)
 
 CIFAR10_TRAIN_TRANS = transforms.Compose(
     [
+        transforms.ToTensor(),
         transforms.RandomCrop(32, padding=4),  # 先四周填充0，在吧图像随机裁剪成32*32
         transforms.RandomHorizontalFlip(),  # 图像一半的概率翻转，一半的概率不翻转
-        transforms.ToTensor(),
         transforms.Normalize(CIFAR10_MEAN, CIFAR10_STD)
     ]
 )
@@ -67,18 +110,26 @@ CIFAR10_TEST_TRANS = transforms.Compose(
     ]
 )
 
+CIFAR10_UNLABELED_TRANS = TransformFixMatch(mean=CIFAR10_MEAN, std=CIFAR10_STD)
+
 # CIFAR 100
 # 50,000个训练样本，10,000个测试样本，每个样本32*32*3，100分类，每类600个样本
 # 100个类被分为20个超类，每个超类下5个类（5*20=100）
 CIFAR100_MEAN = (0.50707515, 0.48654887, 0.44091784)
 CIFAR100_STD = (0.26733428, 0.25643846, 0.27615047)
-CIFAR100_TRANS = transforms.Compose(
+CIFAR100_TRAIN_TRANS = transforms.Compose(
     [
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomCrop(size=32, padding=int(32 * 0.125), padding_mode="reflect"),
         transforms.ToTensor(),
         transforms.Normalize(CIFAR100_MEAN, CIFAR100_STD)
     ]
 )
+CIFAR100_TEST_TRANS = transforms.Compose(
+    [transforms.ToTensor(), transforms.Normalize(mean=CIFAR100_MEAN, std=CIFAR100_STD)]
+)
 
+CIFAR100_UNLABELED_TRANS = TransformFixMatch(mean=CIFAR100_MEAN, std=CIFAR100_STD)
 
 class Data_Loader:
     def __init__(self, which: str, data_root='../.', transform=None):
@@ -101,7 +152,6 @@ class Data_Loader:
                 train=False,
                 download=True,
                 transform=MNIST_TRANS if self.transform is None else self.transform
-
             )
         elif self.which == 'cifar10':
             test_dataset = datasets.CIFAR10(
@@ -115,7 +165,7 @@ class Data_Loader:
                 root=self.dataRoot,
                 train=False,
                 download=True,
-                transform=CIFAR100_TRANS if self.transform is None else self.transform
+                transform=CIFAR10_TEST_TRANS if self.transform is None else self.transform
             )
         return test_dataset
 
@@ -140,23 +190,73 @@ class Data_Loader:
                 root=self.dataRoot,
                 train=True,
                 download=True,
-                transform=CIFAR100_TRANS if self.transform is None else self.transform
+                transform=CIFAR10_TRAIN_TRANS if self.transform is None else self.transform
             )
         return train_dataset
 
+    def get_unlabeled_set(self):
+        if self.which == 'mnist':
+            unlabeled_dataset = datasets.MNIST(
+                root=self.dataRoot,
+                train=True,
+                download=True,
+                transform=MNIST_UNLABELED_TRANS if self.transform is None else self.transform
+            )
+        elif self.which == 'cifar10':
+            unlabeled_dataset = datasets.CIFAR10(
+                root=self.dataRoot,
+                train=True,
+                download=True,
+                transform=CIFAR10_UNLABELED_TRANS if self.transform is None else self.transform
+            )
+        elif self.which == 'cifar100':
+            unlabeled_dataset = datasets.CIFAR100(
+                root=self.dataRoot,
+                train=True,
+                download=True,
+                transform=CIFAR100_UNLABELED_TRANS if self.transform is None else self.transform
+            )
+            return unlabeled_dataset
+    def get_student_set(self):
+        if self.which == 'mnist':
+            student_dataset = random_subset(
+                datasets.MNIST(
+                root=self.dataRoot,
+                train=True,
+                download=True,
+                transform=MNIST_TRANS if self.transform is None else self.transform
+            ),
+            # n_samples = 10000,
+            # seed = student_seed
+            )
 
+        elif self.which == 'cifar10':
+            student_dataset = datasets.CIFAR10(
+                root=self.dataRoot,
+                train=True,
+                download=True,
+                transform=CIFAR10_UNLABELED_TRANS if self.transform is None else self.transform
+            )
+        elif self.which == 'cifar100':
+            student_dataset = datasets.CIFAR100(
+                root=self.dataRoot,
+                train=True,
+                download=True,
+                transform=CIFAR100_UNLABELED_TRANS if self.transform is None else self.transform
+            )
 ###########################################################
 # 生成被投毒的数据集
 ###########################################################
 class Poisoned_Dataset:
-    def __init__(self, dataset, model, num_classes, trials, seed, rand_class=True, pois_func=0):
+    def __init__(self, dataset, dataname, model, num_classes, trials, seed, rand_class=True, pois_func=0):
         self.seed = seed
         self.dataset = dataset
+        self.dataname = dataname
         self.model = model
         self.num_classes = num_classes
         self.poison_num = trials
         self.pois_func = pois_func
-        print("Crafting Dataset~")
+        print("Crafting Poisoned Dataset~")
 
         if pois_func == 0:  # D_0= argmin, D_1=true_labels
             self.dataset = self._D_argmin_true(rand_class)
@@ -181,30 +281,33 @@ class Poisoned_Dataset:
 
     def _rand_sample_specific(self):
         # 在指定类：0中,随机选择N个样本,返回对应的位置和target
-        labels, targets = utils.get_data_targets(self.dataset)
+        # labels, targets = utils.get_data_targets(self.dataset)
+        labels, targets = self.dataset.data, self.dataset.targets
+        if self.dataname == 'cifar10':
+            labels = labels.transpose(0, 3, 2, 1)
 
-        if len(self.dataset.classes)==100:
+        if len(self.dataset.classes) == 100:
             target_classes = list(range(10))
             inds = []
             for target_class in target_classes:
-                ind = np.where(np.asarray(targets.cpu()) == target_class)[0].tolist()
+                ind = np.where(np.asarray(targets) == target_class)[0].tolist()
                 inds.extend(ind)
 
         else:
             target_class = 0
-            inds = np.where(np.asarray(targets.cpu()) == target_class)[0].tolist()
+            inds = np.where(np.asarray(targets) == target_class)[0].tolist()
 
         assert len(inds) >= self.poison_num
 
         np.random.seed(self.seed)
         rand_positions = np.random.choice(inds, self.poison_num, replace=False)
         # 获取随机选中的x,y
-        y = targets[rand_positions]
+        y = np.asarray(targets)[rand_positions]
         x = labels[rand_positions]
         self.rand_positions = rand_positions
-        return rand_positions, x, np.asarray(y.cpu())
+        return rand_positions, x, y
 
-    def _D_argmin_true(self,rand_class):
+    def _D_argmin_true(self, rand_class):
         # 在任意个类中,根据先验知识,选择argmin(predict)的类作为new_y
         if rand_class == True:
             poisoned_positions, orignal_x, orignal_y = self._rand_sample_rand()  # 随机选择trials个样本
@@ -229,7 +332,7 @@ class Poisoned_Dataset:
 
         return dataset
 
-    def _D_argmax_min(self,rand_class):
+    def _D_argmax_min(self, rand_class):
         # 在任意个类中,根据先验知识,选择argmax(predict)的类作为new_y, argmin作为D_0
         if rand_class == True:
             poisoned_positions, orignal_x, orignal_y = self._rand_sample_rand()  # 随机选择trials个样本
@@ -254,7 +357,7 @@ class Poisoned_Dataset:
 
         return dataset
 
-    def _D_argmax_true(self,rand_class):
+    def _D_argmax_true(self, rand_class):
         # 在任意个类中,根据先验知识,选择argmax(predict)的类作为new_y,  true_y 作为D_0
         if rand_class == True:
             poisoned_positions, orignal_x, orignal_y = self._rand_sample_rand()  # 随机选择trials个样本
@@ -278,6 +381,7 @@ class Poisoned_Dataset:
         dataset.targets = list(targets)
 
         return dataset
+
 
 class Canaries_Dataset:
     def __init__(self, dataset, num_classes, trials, seed):
@@ -374,22 +478,27 @@ class Data_Factory:
         else:  # 基于poisoning attack的审计方法
             if self.args.net == 'alibi':
                 label_model_make_poison = ALIBI(trainset=data_load.get_train_set(), testset=data_load.get_test_set(),
-                                          num_classes=self.num_classes, setting=self.setting)
+                                                num_classes=self.num_classes, setting=self.setting)
             elif self.args.net == 'lp-mst':
-                # 将train_set 进行划分
                 train_set_list = utils.partition(data_load.get_train_set(), 2)
                 label_model_make_poison = LPMST(train_set_list, testset=data_load.get_test_set(),
-                                          num_classes=self.num_classes, setting=self.setting)
+                                                num_classes=self.num_classes, setting=self.setting)
+
             model_make_poison = label_model_make_poison.train_model()
 
-            poisoned_dataset = Poisoned_Dataset(data_load.get_train_set(), model=model_make_poison,
+            poisoned_dataset = Poisoned_Dataset(data_load.get_train_set(),
+                                                self.args.dataset.lower(),
+                                                model=model_make_poison,
                                                 num_classes=self.num_classes,
                                                 trials=self.args.trials, seed=self.setting.seed,
                                                 rand_class=self.args.classed_random,
                                                 pois_func=self.args.poisoning_method)
-            return poisoned_dataset.dataset,test_set,poisoned_dataset.D_0,poisoned_dataset.D_1,train_set,poisoned_dataset.D_1
+            if self.args.net == 'lp-mst':
+                train_set_list = utils.partition(poisoned_dataset.dataset, 2)
+                return train_set_list, test_set, poisoned_dataset.D_0, poisoned_dataset.D_1, train_set, poisoned_dataset.D_1
+            return poisoned_dataset.dataset, test_set, poisoned_dataset.D_0, poisoned_dataset.D_1, train_set, poisoned_dataset.D_1
 
     def get_data(self):
         if self.args.dataset.lower() == 'lp-mst':
-            self.train_set = utils.partition(self.train_set,2)
+            self.train_set = utils.partition(self.train_set, 2)
         return self.train_set, self.test_set, self.D_0, self.D_1, self.shadow_train_set, self.shadow_test_set

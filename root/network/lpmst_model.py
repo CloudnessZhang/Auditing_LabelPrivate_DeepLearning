@@ -254,13 +254,14 @@ class LPMST:
             print('==> Preparing noise data..')
             l_avgk = []
             for data, label in tqdm(dataloader):# tqdm 表现为对该批次label进行LDP操作的进度条
+                torch.cuda.empty_cache()
                 data, label = data.cpu(), label.cpu()
                 # pr = (p1,...,pk) 是xi 经上一批次训练得的模型M(t) 预测的概率
                 if idx == 0:
                     # M(0) 为所有的类别输出相同的概率
                     pr = torch.ones([len(label), K]) / K
                 else:
-                    pr = torch.softmax(last_net(data), dim=1)
+                    pr = torch.softmax(last_net(data.to(self.device)).cpu(), dim=1)
 
                 rr_withprior = RR_WithPrior(self.epsilon)
 

@@ -53,6 +53,7 @@ class ShadowModels:
 
     def __init__(
             self,
+            dataname,
             train_set,
             test_set,
             n_models: int,
@@ -60,7 +61,7 @@ class ShadowModels:
             learner,
             **fit_kwargs,
     ) -> None:
-
+        self.dataname =dataname
         self.n_models = n_models
         self.train_set = train_set
         self.test_set = test_set
@@ -74,8 +75,8 @@ class ShadowModels:
         # self.y_train = np.array(y_train)
         # self.y_test = np.array(y_test)
         self.target_classes = target_classes
-        self.train_splits = self._split_data(self.train_set, self.n_models, self.target_classes)
-        self.test_splits = self._split_data(self.test_set, self.n_models, self.target_classes)
+        self.train_splits = self._split_data(self.dataname, self.train_set, self.n_models, self.target_classes)
+        self.test_splits = self._split_data(self.dataname, self.test_set, self.n_models, self.target_classes)
         self.learner = learner
         self.models = self._make_model_list(self.learner, self.n_models)
 
@@ -83,16 +84,17 @@ class ShadowModels:
         self.results = self.train_predict_shadows(**fit_kwargs)
 
     @staticmethod
-    def _split_data(
-            data_set, n_splits: int, n_classes: int
-    ) -> List[np.ndarray]:
+    def _split_data(dataname, data_set, n_splits: int, n_classes: int) -> List[np.ndarray]:
         """
         Split manually into n datasets maintaining class proportions
         """
         if isinstance(data_set, utils.Normal_Dataset):
             data, targets = data_set.data_tensor, data_set.target_tensor
         else:
-            data, targets = get_data_targets(data_set)
+            labels, targets = data_set.data, data_set.targets
+            if dataname == 'cifar10':
+                labels = labels.transpose(0, 3, 2, 1)
+            # data, targets = get_data_targets(data_set)
 
         classes = range(n_classes)
         class_partitions_X = []
