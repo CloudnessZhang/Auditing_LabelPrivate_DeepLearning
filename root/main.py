@@ -49,18 +49,22 @@ def main(args):
 
 
     data_make = DataFactory.Data_Factory(args=args, setting=setting, num_classes=num_classes)
-    train_set, test_set, D_0, D_1, shadow_train_set, shadow_test_set = data_make.get_data()
+    train_set, test_set, D_0, D_1, shadow_train_set, shadow_test_set, prior_model = data_make.get_data()
 
     ###########################################################
     # 在D0数据集上训练模型，得到模型和理论上的隐私损失
     ###########################################################
     # 输入train_set 和 test_set
     print("执行 Label Private Deep Learning~")
-    if args.net == 'alibi':
-        label_model = ALIBI(train_set, test_set, num_classes, setting)
-    elif args.net == 'lp-mst':
-        label_model = LPMST(train_set,test_set,num_classes,setting)
-    model = label_model.train_model()
+    if args.audit_function == 3:
+        label_model = prior_model
+        model = label_model.model
+    else:
+        if args.net == 'alibi':
+            label_model = ALIBI(train_set, test_set, num_classes, setting)
+        elif args.net == 'lp-mst':
+            label_model = LPMST(train_set,test_set,num_classes,setting)
+        model = label_model.train_model()
     audit_result.epsilon_theory = label_model.get_eps()
     audit_result.model_accuary = label_model.acc
     audit_result.model_loss = label_model.loss
@@ -168,9 +172,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Auditing Label Private Deep Learning')  # argparse 命令行参数解析器
 
-    parser.add_argument('--dataset', default='cifar10', type=str, help='dataset name')
+    parser.add_argument('--dataset', default='mnist', type=str, help='dataset name')
     parser.add_argument('--net', default='lp-mst', type=str, help='label private deep learning to be audited')
-    parser.add_argument('--epoch',default=10, type=int, help='the epoch model trains')
+    parser.add_argument('--epoch',default=50, type=int, help='the epoch model trains')
     parser.add_argument('--eps', default=1, type=float, help='privacy parameter epsilon')
     parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')
     parser.add_argument('--sigma', default=2 * (2.0 ** 0.5) / 0.5 , type=float,
@@ -189,7 +193,7 @@ if __name__ == "__main__":
     parser.add_argument('--classed_random', default=False, type=bool, help='Whether to poison a specific target')
     parser.add_argument('--poisoning_method', default=2, type=int, help='the Methods of constructing poisoned samples：'
                                                                         '0: D_0= argmin, D_1=true_labels'
-                                                                        '1: D_0= argmax, D_1=argmin'
+                                                                        '1: D_0= argmax, D_1=argmin' # 删除
                                                                         '2: D_0= argmax, D_1=true_labels')
 
     args = parser.parse_args()
