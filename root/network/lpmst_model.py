@@ -286,6 +286,8 @@ class LPMST:
                 train_loss, train_acc = self._train(net, optimizer=optimizer, criterion=criterion, noise_set=noise_set,
                                               device=self.device, epoch=e)
                 test_loss, test_acc = self._test(net, criterion=criterion, testloader=test_loader, device=self.device,epoch=e)
+                torch.cuda.empty_cache()
+
                 best_acc = test_acc if test_acc > best_acc else best_acc
                 scheduler.step()
                 # cache net

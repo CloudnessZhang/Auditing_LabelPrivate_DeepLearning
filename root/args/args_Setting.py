@@ -68,6 +68,7 @@ class LPMST_Learning:
 class LPMST_Settings:
     dataset: str = "cifar10"
     epsilon: float = 1.
+    delta: float = 1e-5
     # alpha: float = 4.
     learning: LPMST_Learning = LPMST_Learning()
     save_dir: str = "../result"

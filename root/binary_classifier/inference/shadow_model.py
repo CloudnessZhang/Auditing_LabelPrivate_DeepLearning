@@ -62,6 +62,7 @@ class ShadowModels:
             **fit_kwargs,
     ) -> None:
         self.dataname =dataname
+        self.transform = dataname.upper() + '_TRAIN_TRANS'
         self.n_models = n_models
         self.train_set = train_set
         self.test_set = test_set
@@ -162,20 +163,21 @@ class ShadowModels:
 
         # TRAIN and predict
         results = []
-        for model, X_train, y_train, X_test, y_test in tqdm_notebook(
-                zip(self.models, self.train_splits[0], self.train_splits[1], self.test_splits[0], self.test_splits[1])):
-            net = model.train(Normal_Dataset((X_train, y_train)))
+        for i, (model, X_train, y_train, X_test, y_test) in enumerate(tqdm_notebook(
+                zip(self.models, self.train_splits[0], self.train_splits[1], self.test_splits[0], self.test_splits[1]))):
+            print("生成shadow model_"+ str(i))
+            shadow_train_set = Normal_Dataset((torch.tensor(X_train), torch.tensor(y_train)),self.dataname,self.transform)
+            net = model.train(shadow_train_set)
             # data IN training set labeled 1
-            X_train = torch.tensor(X_train).to(self.device)
-            y_train = y_train.reshape(-1, 1)
 
-            predict_in = predict_proba(X_train, net)  # predict(data), (n_samples, n_classes)
+            predict_in = predict_proba(shadow_train_set, net)  # predict(data), (n_samples, n_classes)
+            y_train = y_train.reshape(-1, 1)
             res_in = np.hstack((predict_in.cpu(), y_train, np.ones_like(y_train)))
 
             # data OUT of training set, labeled 0
-            X_test = torch.tensor(X_test).to(self.device)
+            shadow_test_set = Normal_Dataset((torch.tensor(X_test),torch.tensor(y_test)),self.dataname,self.transform)
+            predict_out = predict_proba(shadow_test_set, net)
             y_test = y_test.reshape(-1, 1)
-            predict_out = predict_proba(X_test, net)
             res_out = np.hstack((predict_out.cpu(), y_test, np.zeros_like(y_test)))
 
             # concat in single array

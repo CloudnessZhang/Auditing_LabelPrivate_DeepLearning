@@ -16,8 +16,6 @@ from tqdm import tqdm
 
 import utils
 from args.args_Setting import ALIBI_Settings
-from network import model
-from utils import Normal_Dataset
 
 EPS = 1e-10
 ROOT2 = 2.0 ** 0.5
@@ -524,7 +522,9 @@ class ALIBI:
             targets = batch[1].to(self.device)  # soft_target
             labels = targets if len(batch) == 2 else batch[2].to(self.device)  # y
             # compute output
+
             optimizer.zero_grad()
+            torch.cuda.empty_cache()
             output = model(images)
             # 带贝叶斯计算的loss函数，计算中对target进行校正
             loss = criterion(output, targets)
@@ -533,9 +533,8 @@ class ALIBI:
 
             # measure accuracy and record loss
             acc1 = (preds == labels).mean()
-
             losses.append(loss.item())
-            acc.append(acc1)
+            acc.append(float(acc1))
 
             # compute gradient and do SGD step
             loss.backward()
@@ -562,6 +561,7 @@ class ALIBI:
                 images = images.to(self.device)
                 target = target.to(self.device)
 
+                torch.cuda.empty_cache()
                 output = model(images)
                 loss = criterion(output, target)
                 preds = np.argmax(output.detach().cpu().numpy(), axis=1)
@@ -635,6 +635,7 @@ class ALIBI:
             if self.randomized_label_privacy is not None:
                 self.randomized_label_privacy.eval()
             acc, loss = self._test(self.model, test_loader, criterion, epoch)
+            torch.cuda.empty_cache()
         return self.model
 
     def predict_proba(self, X_train):

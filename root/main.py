@@ -31,7 +31,7 @@ def main(args):
     if args.net.lower() == 'alibi':
         setting = ALIBI_Settings
         setting.dataset = args.dataset.lower()
-        setting.privacy.sigma = args.sigma
+        setting.privacy.sigma = 2 * (2.0 ** 0.5) / args.eps
         setting.privacy.delta = args.delta
         setting.learning.epochs = args.epoch
     elif args.net.lower() == 'lp-mst':
@@ -172,13 +172,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Auditing Label Private Deep Learning')  # argparse 命令行参数解析器
 
-    parser.add_argument('--dataset', default='mnist', type=str, help='dataset name')
-    parser.add_argument('--net', default='lp-mst', type=str, help='label private deep learning to be audited')
-    parser.add_argument('--epoch',default=50, type=int, help='the epoch model trains')
+    parser.add_argument('--dataset', default='cifar10', type=str, help='dataset name')
+    parser.add_argument('--net', default='alibi', type=str, help='label private deep learning to be audited')
+    parser.add_argument('--epoch',default=200, type=int, help='the epoch model trains')
     parser.add_argument('--eps', default=1, type=float, help='privacy parameter epsilon')
     parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')
-    parser.add_argument('--sigma', default=2 * (2.0 ** 0.5) / 0.5 , type=float,
-                        help='Guassion or Laplace perturbation coefficient')
     parser.add_argument('--trials', default=5000, type=float, help='The number of sample labels changed is trials')
     parser.add_argument('--audit_function', default=3, type=int, help='the function of auditing:'
                                                                       '0：based simple inference attack,'
@@ -190,11 +188,7 @@ if __name__ == "__main__":
                              '0: simple inference attack,'
                              '1: memorization attack,'
                              '2: shadow model inference attack')
-    parser.add_argument('--classed_random', default=False, type=bool, help='Whether to poison a specific target')
-    parser.add_argument('--poisoning_method', default=2, type=int, help='the Methods of constructing poisoned samples：'
-                                                                        '0: D_0= argmin, D_1=true_labels'
-                                                                        '1: D_0= argmax, D_1=argmin' # 删除
-                                                                        '2: D_0= argmax, D_1=true_labels')
+    parser.add_argument('--classed_random', default=True, type=bool, help='Whether to poison a specific target')
 
     args = parser.parse_args()
 

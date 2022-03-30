@@ -37,16 +37,20 @@ def eps_MI(count, T, epsilon_theory=0):
         return max(eps_low, eps_high)
 
 
-def get_X_y(dataname, D_0, D_1):
+def get_y_in_out(D_0, D_1):
     if isinstance(D_0, utils.Normal_Dataset):
-        x_in, y_in = D_0.data_tensor, D_0.target_tensor
+        y_in = D_0.target_tensor
+    elif isinstance(D_0, Subset):
+        y_in = torch.tensor(np.asarray(D_0.dataset.targets)[D_0.indices])
     else:
-        x_in, y_in = get_data_targets(dataset=D_0,dataname=dataname)
+        y_in = D_0.targets
     if isinstance(D_1, utils.Normal_Dataset):
-        x_out, y_out = D_1.data_tensor, D_1.target_tensor
+        y_out = D_1.target_tensor
+    elif isinstance(D_1, Subset):
+        y_out = torch.tensor(np.asarray(D_1.dataset.targets)[D_1.indices])
     else:
-        x_out, y_out = get_data_targets(dataset=D_1,dataname=dataname)
-    return x_in, y_in, x_out, y_out
+        y_out = D_1.targets
+    return y_in,  y_out
 
 
 ###########################################################
@@ -101,11 +105,11 @@ class EPS_LB_SmipleMI:
         self._eps_LB(epsilon_theory)
 
     def _eps_LB(self, epsilon_theory):
-        x_in, y_in, x_out, y_out = get_X_y(self.dataname,self.D_0, self.D_1)
+        y_in, y_out = get_y_in_out(self.D_0, self.D_1)
         count_sum = len(y_in) + len(y_out)
         self.eps_OPT = eps_MI(count_sum, count_sum)
 
-        count = self.T.MI(x_in, y_in) + (len(y_out) - self.T.MI(x_out, y_out))
+        count = self.T.MI(self.D_0, y_in) + (len(y_out) - self.T.MI(self.D_1, y_out))
         self.eps_LB = eps_MI(count, count_sum, epsilon_theory)
         self.inference_acc = format(float(count) / float(count_sum), '.4f')
 
@@ -122,13 +126,13 @@ class EPS_LB_SHADOWMI:
         self.T = T
         self._eps_LB(epsilon_theory)
 
-    def _MI_in_train(self, y, pr):
-        res_in = self.T.predict(pr.cpu(), y.cpu(), batch=True)
-        count = np.sum(np.argmax(res_in, axis=1))
-        return count
-
-    def _MI_out_train(self, y, pr):
-        return len(y) - self._MI_in_train(y, pr)
+    # def _MI_in_train(self, y, pr):
+    #     res_in = self.T.predict(pr.cpu(), y.cpu(), batch=True)
+    #     count = np.sum(np.argmax(res_in, axis=1))
+    #     return count
+    #
+    # def _MI_out_train(self, y, pr):
+    #     return len(y) - self._MI_in_train(y, pr)
 
     def _MI(self, y_in, pr_in, y_out, pr_out):
         res_in = self.T.predict(pr_in.cpu(), y_in.cpu(), batch=True)
@@ -153,10 +157,10 @@ class EPS_LB_SHADOWMI:
 
     def _eps_LB(self, epsilon_theory):
         # 计算最佳统计结果下的隐私损失ε_OPT
-        x_in, y_in, x_out, y_out = get_X_y(self.dataname, self.D_0, self.D_1)
+        y_in, y_out = get_y_in_out(self.D_0, self.D_1)
 
         # 根据模型获取置信度
-        predict = predict_proba(x_in, self.model)
+        predict = predict_proba(self.D_0, self.model)
         # 基于影子模型隐私推理
         count, count_sum = self._MI(y_in, predict, y_out, predict)
         # 计算ε_LB
@@ -301,73 +305,12 @@ class EPS_LB_Memorization:
         return eps_low, eps_high
 
     def _eps_LB(self, epsilon_theory):
-        if isinstance(self.D_0, utils.Normal_Dataset):
-            x_in, y_in = self.D_0.data_tensor, self.D_0.target_tensor
-        else:
-            x_in, y_in = get_data_targets(dataset=self.D_0,dataname=self.dataname)
+        y_in,y_out = get_y_in_out(self.D_0,self.D_1)
 
-        predictions = predict_proba(x_in, self.model)
+        predictions = predict_proba(self.D_0, self.model)
 
         c1, c2 = self._get_confidence(predictions.cpu().numpy(), y_in)
 
         eps_low, eps_high = self.compute_eps(c1, c2)
         self.eps_OPT = eps_MI(len(y_in), len(y_in))
         self.eps_LB = max(eps_low, eps_high)
-
-# ###########################################################
-# # 利用 Shadow_MI |C|-1 个 D_1 计算epsilon的下界
-# ###########################################################
-# class EPS_LB_SHADOWMI_Multi:
-#     def __init__(self, D_0, D_1, num_classes, model, T):
-#         self.D_0 = D_0
-#         self.D_1 = D_1
-#         self.num_classes = num_classes
-#         self.model = model
-#         self.T = T
-#         self._eps_LB()
-#
-#     def _MI_in_train(self, y, pr):
-#         res_in = self.T.predict(pr.cpu(), y.cpu(), batch=True)
-#         count = np.sum(np.argmax(res_in, axis=1))
-#         return count
-#
-#     def _MI_out_train(self, y, pr):
-#         return len(y) - self._MI_in_train(y, pr)
-#
-#     def _MI(self, y_in, pr_in, y_out, pr_out):
-#         res_in = self.T.predict(pr_in.cpu(), y_in.cpu(), batch=True)
-#         res_out = self.T.predict(pr_out.cpu(), y_out.cpu(), batch=True)
-#         guess_1 = np.argmax(res_in, axis=1)  # 1:in 0:out
-#         guess_2 = np.argmax(res_out, axis=1)
-#         # 统计弃权次数,即均判断为D_1
-#         abstain = np.where((guess_1 + guess_2) == 0)[0].size
-#         count_sum = len(y_in) - abstain
-#         # 统计成功次数,即(x,y)判断为D_0,(x,y')判断为D_1
-#         count = np.where((guess_1 == 1) & (guess_2 == 0))[0].size
-#         # 统计比较后成功次数,即(x,y)(x,y')均判断为D_0,但(x,y)可能性更大
-#         compare_indx = np.where((guess_1 == 1) & (guess_2 == 1))[0]
-#         compare_1 = res_in[:, 1][compare_indx]
-#         compare_2 = res_out[:, 1][compare_indx]
-#         count = count + np.where(compare_1 >= compare_2)[0].size
-#         return count, count_sum
-#
-#     def _eps_LB(self):
-#         # 计算最佳统计结果下的隐私损失ε_OPT
-#         total_count, total_count_sum = 0, 0
-#         for D_1_i in self.D_1:
-#             x_in, y_in, x_out, y_out = get_X_y(self.D_0, D_1_i)
-#
-#             # count_sum = len(self.D_0) + len(self.D_1)
-#             # 根据模型获取置信度
-#             predict_in = predict_proba(x_in, self.model)
-#             predict_out = predict_proba(x_out, self.model)
-#
-#             # 基于影子模型隐私推理
-#             count, count_sum = self._MI(y_in, predict_in, y_out, predict_out)
-#             total_count = total_count + count
-#             total_count_sum = total_count_sum + count_sum
-#         # 计算ε_LB
-#         print("count= ", total_count, "count_sum =", total_count_sum)
-#         self.eps_OPT = eps_MI(len(y_in) * (self.num_classes - 1), len(y_in) * (self.num_classes - 1))
-#         self.eps_LB = eps_MI(total_count, total_count_sum)
-#         self.inference_acc = format(float(total_count) / float(total_count_sum), '.4f')

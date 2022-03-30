@@ -22,13 +22,13 @@ class BaseMI:
           self.threshould = self._get_mean()
 
     def _get_mean(self):
-        trn_x, trn_y = get_data_targets(self.D_train,dataname=self.dataname)
-        ptrdict_y=predict(trn_x, self.net)
-        mse = mean_squared_error(trn_y.cpu(),ptrdict_y.cpu())
+        _, trn_y = get_data_targets(self.D_train,dataname=self.dataname)
+        predict_y=predict(self.D_train, self.net)
+        mse = mean_squared_error(trn_y.cpu(),predict_y.cpu())
         return sqrt(mse)
 
-    def MI(self, x, y):
-        predict_y = predict(x, self.net)
+    def MI(self, dataset,y):
+        predict_y = predict(dataset, self.net)
         errors = y-predict_y
         count = (abs(errors) <= self.threshould).sum()
         return count.cpu()

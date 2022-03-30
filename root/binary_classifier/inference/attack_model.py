@@ -2,7 +2,6 @@ from copy import copy
 import numpy as np
 from sklearn import clone
 
-from utils import Normal_Dataset
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -133,7 +132,10 @@ class AttackModels:
                 model = self.attack_models[model_cls]
                 attack_res = model.predict_proba(X_cls)
                 if attack_res.shape[1] == 1:
-                    attack_res = np.column_stack((attack_res,np.zeros_like(attack_res)))
+                    if attack_res.max() == 1:
+                        attack_res = np.column_stack((np.zeros_like(attack_res), attack_res))
+                    else:
+                        attack_res = np.column_stack((attack_res,np.zeros_like(attack_res)))
                 res.append(attack_res)
 
             return np.concatenate(res)

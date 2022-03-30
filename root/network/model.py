@@ -19,7 +19,7 @@ class ResNet18:
         self._model(num_classes)
         self._optimizer()
 
-    def _model(self,num_classes):
+    def _model(self, num_classes):
         net = models.resnet18()
         net.fc = nn.Linear(net.fc.in_features, num_classes)
         self.model = net.to(self.device)
@@ -59,9 +59,10 @@ class ResNet18:
             acc = []
             # train for one epoch
             for i, (images, target) in enumerate(train_loader):
-                images = images.float().to(self.device)
-                target = target.to(self.device)
+                images, target = images.to(self.device), target.to(self.device)
                 optimizer.zero_grad()
+
+                torch.cuda.empty_cache()
                 output = model(images)
                 loss = criterion(output, target)
 
@@ -78,6 +79,7 @@ class ResNet18:
                 optimizer.step()
         self.model = model
         return model
+
 
 class AttackModel:
     def __init__(self, setting):
@@ -149,7 +151,7 @@ class AttackModel:
         self.model = model
         return model
 
-    def predict_proba(self,X):
+    def predict_proba(self, X):
         net = self.model
         Xloader = data.DataLoader(X, 128, shuffle=False)
         torch.cuda.empty_cache()

@@ -1,5 +1,3 @@
-import os
-import pickle
 import random
 from copy import copy
 
@@ -14,6 +12,7 @@ from network.alibi_model import ALIBI
 from network.lpmst_model import LPMST
 from network.pate.randaugment import RandAugmentMC
 from torch.utils.data import Subset
+
 
 ssl._create_default_https_context = ssl._create_unverified_context  # 解决cifar10下载报错问题
 
@@ -81,7 +80,14 @@ class TransformFixMatch(object):
 # )
 MNIST_MEAN = (0.1307, 0.1307, 0.1307)
 MNIST_STD = (0.3081, 0.3081, 0.3081)
-MNIST_TRANS = transforms.Compose([
+MNIST_TRAIN_TRANS = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.Grayscale(3),
+    transforms.ToTensor(),
+    transforms.Normalize(MNIST_MEAN, MNIST_STD),
+])
+
+MNIST_TEST_TRANS = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.Grayscale(3),
     transforms.ToTensor(),
@@ -153,7 +159,7 @@ class Data_Loader:
                 root=self.dataRoot,
                 train=False,
                 download=True,
-                transform=MNIST_TRANS if self.transform is None else self.transform
+                transform=MNIST_TEST_TRANS if self.transform is None else self.transform
             )
         elif self.which == 'cifar10':
             test_dataset = datasets.CIFAR10(
@@ -178,7 +184,7 @@ class Data_Loader:
                 root=self.dataRoot,
                 train=True,
                 download=True,
-                transform=MNIST_TRANS if self.transform is None else self.transform
+                transform=MNIST_TRAIN_TRANS if self.transform is None else self.transform
             )
         elif self.which == 'cifar10':
             train_dataset = datasets.CIFAR10(
@@ -227,7 +233,7 @@ class Data_Loader:
                     root=self.dataRoot,
                     train=True,
                     download=True,
-                    transform=MNIST_TRANS if self.transform is None else self.transform
+                    transform=MNIST_UNLABELED_TRANS if self.transform is None else self.transform
                 ),
                 # n_samples = 10000,
                 # seed = student_seed
@@ -253,24 +259,17 @@ class Data_Loader:
 # 生成被投毒的数据集
 ###########################################################
 class Poisoned_Dataset:
-    def __init__(self, dataset, dataname, model, num_classes, trials, seed, rand_class=True, pois_func=0):
+    def __init__(self, dataset, dataname, model, num_classes, trials, seed, rand_class=True):
         self.seed = seed
         self.train_dataset = dataset
         self.dataname = dataname
+        self.transform = dataname.upper() + '_TRAIN_TRANS'
         self.model = model
         self.num_classes = num_classes
         self.poison_num = trials
-        self.pois_func = pois_func
         print("Crafting Poisoned Dataset~")
 
-        if pois_func == 0:  # D_0= argmin, D_1=true_labels
-            self.poison_dataset = self._D_argmin_true(rand_class)
-        elif pois_func == 1:  # D_0= argmax, D_1=argmin
-            # 取argmax or second
-            self.poison_dataset = self._D_argmax_min(rand_class)
-        else:  # D_0= argmax, D_1=true_labels
-            self.poison_dataset = self._D_argmax_true(rand_class)
-
+        self.poison_dataset = self._D_argmin(rand_class)
         assert torch.sum(self.D_0.target_tensor == self.D_1.target_tensor) == 0, "Make Dataset Error"
 
     def _rand_sample_rand(self):
@@ -284,9 +283,9 @@ class Poisoned_Dataset:
         self.rand_positions = rand_positions
         return rand_positions, x, np.asarray(y.cpu())
 
-    def _rand_sample_specific(self):
+    def _rand_sample_specific(self)->(np.ndarray, torch.Tensor, np.ndarray):
         # 在指定类：0中,随机选择N个样本,返回对应的位置和target
-        labels, targets = utils.get_data_targets(self.train_dataset, self.dataname)
+        labels, targets = utils.get_data_targets(self.train_dataset, self.dataname) #tensor tensor
         target_class = 0
         inds = np.where(np.asarray(targets.cpu()) == target_class)[0].tolist()
         while len(inds) < self.poison_num:
@@ -304,23 +303,23 @@ class Poisoned_Dataset:
         self.rand_positions = rand_positions
         return rand_positions, x, y
 
-    def _D_argmin_true(self, rand_class):
+    def _D_argmin(self, rand_class):
         # 在任意个类中,根据先验知识,选择argmin(predict)的类作为new_y
         if rand_class == True:
             poisoned_positions, orignal_x, orignal_y = self._rand_sample_rand()  # 随机选择trials个样本
         else:
             poisoned_positions, orignal_x, orignal_y = self._rand_sample_specific()  # 在指定类中随机选择trials个样本
-            # 均为array格式
+            #ndarray, tensor, ndarray
 
-        predictions = utils.predict_proba(orignal_x, self.model)  # 得到先验知识pr
+        self.D_0 = utils.Normal_Dataset((orignal_x, torch.tensor(orignal_y)),self.dataname,self.transform)
+
+        predictions = utils.predict_proba(self.D_0, self.model).cpu()  # 得到先验知识pr
         # 构造投毒样本argmin
         poisoned_y = torch.argmin(predictions, dim=1)
         inds = np.where(np.asarray(poisoned_y.cpu()) == orignal_y)[0].tolist()
         poisoned_y[inds] = torch.argsort(predictions, dim=1)[:, 1][inds]  # 默认从小到大排序，选第二小
         # 获取输入二分类算法的D_0,D_1
-        orignal_y = torch.tensor(orignal_y).to(device)
-        self.D_0 = utils.Normal_Dataset((orignal_x, orignal_y))
-        self.D_1 = utils.Normal_Dataset((orignal_x, poisoned_y))
+        self.D_1 = utils.Normal_Dataset((orignal_x, poisoned_y),self.dataname,self.transform)
 
         dataset = copy(self.train_dataset)
 
@@ -361,39 +360,39 @@ class Poisoned_Dataset:
     #
     #     return dataset
 
-    def _D_argmax_true(self, rand_class):
-        # 在任意个类中,根据先验知识,选择argmax(predict)的类作为new_y,  true_y 作为D_0
-        if rand_class == True:
-            poisoned_positions, orignal_x, orignal_y = self._rand_sample_rand()  # 随机选择trials个样本
-        else:
-            poisoned_positions, orignal_x, orignal_y = self._rand_sample_specific()  # 在指定类中随机选择trials个样本
-
-        predictions = utils.predict_proba(orignal_x, self.model)  # 得到先验知识pr
-        # 构造投毒样本 argmax
-        poisoned_y = torch.argmax(predictions, dim=1)
-        inds = np.where(np.asarray(poisoned_y.cpu()) == orignal_y)[0].tolist()
-        poisoned_y[inds] = torch.argsort(predictions, dim=1, descending=True)[:, 1][inds]  # 从大到小排序排序，选第二大
-        # 获取输入二分类算法的D_0,D_1
-        orignal_y = torch.tensor(orignal_y).to(device)
-        self.D_0 = utils.Normal_Dataset((orignal_x, orignal_y))
-        self.D_1 = utils.Normal_Dataset((orignal_x, poisoned_y))
-
-        dataset = copy(self.train_dataset)
-
-        if isinstance(self.train_dataset, Subset):
-            targets = np.asarray(self.train_dataset.dataset.targets)[self.train_dataset.indices]
-        else:
-            targets = np.asarray(self.train_dataset.targets)
-        targets[poisoned_positions] = poisoned_y.cpu()
-        dataset.targets = list(targets)
-
-        return dataset
+    # def _D_argmax(self, rand_class):
+    #     # 在任意个类中,根据先验知识,选择argmax(predict)的类作为new_y,  true_y 作为D_0
+    #     if rand_class == True:
+    #         poisoned_positions, orignal_x, orignal_y = self._rand_sample_rand()  # 随机选择trials个样本
+    #     else:
+    #         poisoned_positions, orignal_x, orignal_y = self._rand_sample_specific()  # 在指定类中随机选择trials个样本 ndarray,tensor,ndarray
+    #
+    #     self.D_0 = utils.Normal_Dataset((orignal_x, torch.tensor(orignal_y)),self.dataname,self.transform)
+    #     predictions = utils.predict_proba(self.D_0, self.model).cpu()  # 得到先验知识pr
+    #     # 构造投毒样本 argmax
+    #     poisoned_y = torch.argmax(predictions, dim=1)
+    #     inds = np.where(np.asarray(poisoned_y.cpu()) == orignal_y)[0].tolist()
+    #     poisoned_y[inds] = torch.argsort(predictions, dim=1, descending=True)[:, 1][inds]  # 从大到小排序排序，选第二大
+    #     # 获取输入二分类算法的D_0,D_1
+    #     self.D_1 = utils.Normal_Dataset((orignal_x, poisoned_y),self.dataname,self.transform)
+    #
+    #     dataset = copy(self.train_dataset)
+    #
+    #     if isinstance(self.train_dataset, Subset):
+    #         targets = np.asarray(self.train_dataset.dataset.targets)[self.train_dataset.indices]
+    #     else:
+    #         targets = np.asarray(self.train_dataset.targets)
+    #     targets[poisoned_positions] = poisoned_y.cpu()
+    #     dataset.targets = list(targets)
+    #
+    #     return dataset
 
 
 class Canaries_Dataset:
     def __init__(self, dataset, dataname, num_classes, trials, seed):
         self.train_dataset = dataset
         self.dataname = dataname
+        self.transform = dataname.upper() + '_TRAIN_TRANS'
         self.num_classes = num_classes
         self.num = trials
         self.seed = seed
@@ -407,7 +406,7 @@ class Canaries_Dataset:
         # 获取随机选中的x,y
         original_y = targets[rand_positions]
         original_x = labels[rand_positions]
-        self.D_0 = utils.Normal_Dataset((original_x, original_y))
+        self.D_0 = utils.Normal_Dataset((original_x, original_y),self.dataname,self.transform)
 
         # 随机翻转标签
         rand_labels = []
@@ -417,7 +416,7 @@ class Canaries_Dataset:
             new_y = np.random.choice(list(set(range(self.num_classes)) - {y}))
             rand_labels.append(new_y)
 
-        self.D_1 = utils.Normal_Dataset((original_x, torch.tensor(rand_labels).to(device)))
+        self.D_1 = utils.Normal_Dataset((original_x, torch.tensor(rand_labels)),self.dataname,self.transform)
         return rand_positions, rand_labels
 
     def _fill_canaries(self):
@@ -494,9 +493,9 @@ class Data_Factory:
                                                     self.args.dataset.lower(),
                                                     model=model,
                                                     num_classes=self.num_classes,
-                                                    trials=self.args.trials, seed=self.setting.seed,
-                                                    rand_class=self.args.classed_random,
-                                                    pois_func=self.args.poisoning_method)
+                                                    trials=self.args.trials,
+                                                    seed=self.setting.seed,
+                                                    rand_class=self.args.classed_random)
                 return train_set, test_set, poisoned_dataset.D_0, poisoned_dataset.D_1, train_set, poisoned_dataset.D_1, label_model
             elif self.args.net == 'lp-mst':
                 train_set_list = utils.partition(data_load.get_train_set(), 2)
@@ -509,11 +508,10 @@ class Data_Factory:
                                                     model=model,
                                                     num_classes=self.num_classes,
                                                     trials=self.args.trials, seed=self.setting.seed,
-                                                    rand_class=self.args.classed_random,
-                                                    pois_func=self.args.poisoning_method)
+                                                    rand_class=self.args.classed_random)
                 return train_set_list, test_set, poisoned_dataset.D_0, poisoned_dataset.D_1, train_set_list[1], poisoned_dataset.D_1, label_model
 
     def get_data(self):
         if self.args.dataset.lower() == 'lp-mst':
             self.train_set = utils.partition(self.train_set, 2)
-        return self.train_set, self.test_set, self.D_0, self.D_1, self.shadow_train_set, self.shadow_test_set
+        return self.train_set, self.test_set, self.D_0, self.D_1, self.shadow_train_set, self.shadow_test_set, self.M_x
