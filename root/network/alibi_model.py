@@ -109,12 +109,7 @@ class NoisedCIFAR():
     ):
         self.cifar = cifar
         self.rlp = randomized_label_privacy
-        if isinstance(cifar, utils.Normal_Dataset):
-            targets = cifar.target_tensor
-        elif isinstance(cifar, Subset):
-            targets = [cifar.dataset.targets[i] for i in cifar.indices]
-        else:
-            targets = cifar.targets
+        targets = utils.get_targets(cifar)
         self.soft_targets = [self._noise(t, num_classes) for t in targets]
         self.rlp.increase_budget()  # increase budget
         print("privacy budget is", self.rlp.privacy)

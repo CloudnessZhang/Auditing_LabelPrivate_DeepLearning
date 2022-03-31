@@ -1,11 +1,12 @@
 from math import sqrt
 
 import numpy as np
+import torch
 from torch import nn
 from sklearn.metrics import mean_squared_error
 
 import utils
-from utils import get_data_targets, predict_proba,predict
+from utils import get_data_targets,predict
 
 
 class BaseMI:
@@ -29,6 +30,8 @@ class BaseMI:
 
     def MI(self, dataset,y):
         predict_y = predict(dataset, self.net)
-        errors = y-predict_y
+        if isinstance(y,list):
+            y = torch.tensor(y)
+        errors = y-predict_y.cpu()
         count = (abs(errors) <= self.threshould).sum()
-        return count.cpu()
+        return count

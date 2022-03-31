@@ -74,6 +74,19 @@ def get_data_targets(dataset, dataname) -> (torch.Tensor, torch.Tensor):
         return data, torch.tensor(targets)
 
 
+def get_targets(datasset):
+    if isinstance(datasset, Normal_Dataset):
+        targets = datasset.target_tensor
+    elif isinstance(datasset, Subset):
+        targets = torch.tensor(np.asarray(datasset.dataset.targets)[datasset.indices])
+    else:
+        targets = datasset.targets
+        if isinstance(targets, list):
+            targets = torch.tensor(targets)
+
+    return targets
+
+
 def predict_proba(dataset, net) -> torch.Tensor:
     dataloader = DataLoader(dataset, 128, shuffle=False)
     torch.cuda.empty_cache()
@@ -107,7 +120,7 @@ def save_name(epoch, args):
         sess = 'SimpleDatasets_'
     elif args.making_datasets == 1:
         sess = 'FlippingDatasets_trials' + str(args.trials) + '_'
-    elif args.audit_function == 2:
+    elif args.making_datasets == 2:
         sess = 'PoisoningDatasets_trials' + str(args.trials) + '_'
 
     if args.binary_classifier == 0:
@@ -123,14 +136,15 @@ def save_name(epoch, args):
 
 def save_Class(class_sv, path):
     out_put = open(path, 'wb')
-    class_save = pickle.dumps(class_sv)
-    out_put.write(class_save)
+    data = pickle.dumps(class_sv)
+    out_put.write(data)
     out_put.close()
 
 
 def read_Class(class_rd, path):
     in_f = open(path, 'rb')
-    class_rd = pickle.load(in_f)
+    data = in_f.read()
+    class_rd = pickle.loads(data)
     in_f.close()
     return class_rd
 

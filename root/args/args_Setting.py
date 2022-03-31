@@ -7,16 +7,14 @@ from dataclasses import dataclass
 
 @dataclass
 class Audit_result:
-    making_datasets : int = 0
-    binary_classifier: int = 0
+    making_datasets_method : int = 0
+    binary_classifier_method: int = 0
     epsilon_theory: float = .0
     epsilon_lb: float =.0
     epsilon_opt: float =.0
     model_accuary: float =.0
     model_loss:float =.0
     inference_accuary: float =.0
-    poisoning_effect: float =.0
-
 ###########################################################
 # ALIBI args
 ###########################################################

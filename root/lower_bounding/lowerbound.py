@@ -44,13 +44,17 @@ def get_y_in_out(D_0, D_1):
         y_in = torch.tensor(np.asarray(D_0.dataset.targets)[D_0.indices])
     else:
         y_in = D_0.targets
+        if isinstance(y_in, list):
+            y_in = torch.tensor(y_in)
     if isinstance(D_1, utils.Normal_Dataset):
         y_out = D_1.target_tensor
     elif isinstance(D_1, Subset):
         y_out = torch.tensor(np.asarray(D_1.dataset.targets)[D_1.indices])
     else:
         y_out = D_1.targets
-    return y_in,  y_out
+        if isinstance(y_out, list):
+            y_out = torch.tensor(y_out)
+    return y_in, y_out
 
 
 ###########################################################
@@ -61,7 +65,6 @@ class LowerBound:
         self.eps_OPT: float = .0
         self.eps_LB: float = .0
         self.inference_accuary: float = .0
-        self.poisoning_effect: float = .0
         self.epsilon_theory = epsilon_theory
 
         self._epslb(D_0, D_1, num_classes, model, T, args)
@@ -169,13 +172,25 @@ class EPS_LB_Memorization:
         self.model = model
         self._eps_LB(epsilon_theory)
 
+    def _get_y(self,datasset):
+        if isinstance(datasset, utils.Normal_Dataset):
+            y = datasset.target_tensor
+        elif isinstance(datasset, Subset):
+            y = torch.tensor(np.asarray(datasset.dataset.targets)[datasset.indices])
+        else:
+            y = datasset.targets
+            if isinstance(y, list):
+                y = torch.tensor(y)
+
+        return y
+
     def _get_confidence(self, predictions: numpy.ndarray, canary_labels):
-        canary_labels = np.asarray(canary_labels.cpu())
+        canary_labels = np.asarray(canary_labels)
 
         c1 = predictions[np.arange(len(canary_labels)), canary_labels]
         c1 = c1.reshape(-1, 1)
 
-        true_labels = np.asarray(self.D_1.target_tensor.cpu())
+        true_labels = np.asarray(self._get_y(self.D_1))
 
         incorrect_labels = [  # 获取除{y1,y2}外的元素
             sorted(list(set(range(self.num_classes)) - {y1, y2}))
@@ -293,11 +308,11 @@ class EPS_LB_Memorization:
         return eps_low, eps_high
 
     def _eps_LB(self, epsilon_theory):
-        y_in,y_out = get_y_in_out(self.D_0,self.D_1)
+        y_in, y_out = get_y_in_out(self.D_0, self.D_1)
 
         predictions = predict_proba(self.D_0, self.model)
 
-        c1, c2 = self._get_confidence(predictions.cpu().numpy(), y_in)
+        c1, c2 = self._get_confidence(predictions.cpu().numpy(), np.asarray(y_in))
 
         eps_low, eps_high = self.compute_eps(c1, c2)
         self.eps_OPT = eps_MI(len(y_in), len(y_in))
