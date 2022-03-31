@@ -13,7 +13,6 @@ from network.lpmst_model import LPMST
 from network.pate.randaugment import RandAugmentMC
 from torch.utils.data import Subset
 
-
 ssl._create_default_https_context = ssl._create_unverified_context  # 解决cifar10下载报错问题
 
 # 支持数据库
@@ -283,9 +282,9 @@ class Poisoned_Dataset:
         self.rand_positions = rand_positions
         return rand_positions, x, np.asarray(y.cpu())
 
-    def _rand_sample_specific(self)->(np.ndarray, torch.Tensor, np.ndarray):
+    def _rand_sample_specific(self) -> (np.ndarray, torch.Tensor, np.ndarray):
         # 在指定类：0中,随机选择N个样本,返回对应的位置和target
-        labels, targets = utils.get_data_targets(self.train_dataset, self.dataname) #tensor tensor
+        labels, targets = utils.get_data_targets(self.train_dataset, self.dataname)  # tensor tensor
         target_class = 0
         inds = np.where(np.asarray(targets.cpu()) == target_class)[0].tolist()
         while len(inds) < self.poison_num:
@@ -309,9 +308,9 @@ class Poisoned_Dataset:
             poisoned_positions, orignal_x, orignal_y = self._rand_sample_rand()  # 随机选择trials个样本
         else:
             poisoned_positions, orignal_x, orignal_y = self._rand_sample_specific()  # 在指定类中随机选择trials个样本
-            #ndarray, tensor, ndarray
+            # ndarray, tensor, ndarray
 
-        self.D_0 = utils.Normal_Dataset((orignal_x, torch.tensor(orignal_y)),self.dataname,self.transform)
+        self.D_0 = utils.Normal_Dataset((orignal_x, torch.tensor(orignal_y)), self.dataname, self.transform)
 
         predictions = utils.predict_proba(self.D_0, self.model).cpu()  # 得到先验知识pr
         # 构造投毒样本argmin
@@ -319,7 +318,7 @@ class Poisoned_Dataset:
         inds = np.where(np.asarray(poisoned_y.cpu()) == orignal_y)[0].tolist()
         poisoned_y[inds] = torch.argsort(predictions, dim=1)[:, 1][inds]  # 默认从小到大排序，选第二小
         # 获取输入二分类算法的D_0,D_1
-        self.D_1 = utils.Normal_Dataset((orignal_x, poisoned_y),self.dataname,self.transform)
+        self.D_1 = utils.Normal_Dataset((orignal_x, poisoned_y), self.dataname, self.transform)
 
         dataset = copy(self.train_dataset)
 
@@ -388,7 +387,7 @@ class Poisoned_Dataset:
     #     return dataset
 
 
-class Canaries_Dataset:
+class Flipping_Dataset:
     def __init__(self, dataset, dataname, num_classes, trials, seed):
         self.train_dataset = dataset
         self.dataname = dataname
@@ -406,7 +405,7 @@ class Canaries_Dataset:
         # 获取随机选中的x,y
         original_y = targets[rand_positions]
         original_x = labels[rand_positions]
-        self.D_0 = utils.Normal_Dataset((original_x, original_y),self.dataname,self.transform)
+        self.D_0 = utils.Normal_Dataset((original_x, original_y), self.dataname, self.transform)
 
         # 随机翻转标签
         rand_labels = []
@@ -416,7 +415,7 @@ class Canaries_Dataset:
             new_y = np.random.choice(list(set(range(self.num_classes)) - {y}))
             rand_labels.append(new_y)
 
-        self.D_1 = utils.Normal_Dataset((original_x, torch.tensor(rand_labels)),self.dataname,self.transform)
+        self.D_1 = utils.Normal_Dataset((original_x, torch.tensor(rand_labels)), self.dataname, self.transform)
         return rand_positions, rand_labels
 
     def _fill_canaries(self):
@@ -468,26 +467,31 @@ class Data_Factory:
         self.setting = setting
         self.num_classes = num_classes
         # D_0为(xi,yi)T D_1为(xi,yi')T
-        self.train_set, self.test_set, self.D_0, self.D_1, self.shadow_train_set, self.shadow_test_set, self.M_x = self._make_dataset()
+        self.M_x = None
 
-    def _make_dataset(self):
+    def _set_set(self, train_set, test_set, D_0, D_1, shadow_train_set, shadow_test_set):
+        self.train_set = train_set
+        self.test_set = test_set
+        self.D_0 = D_0
+        self.D_1 = D_1
+        self.shadow_train_set = shadow_train_set
+        self.shadow_test_set = shadow_test_set
+
+    def make_dataset(self):
         data_load = Data_Loader(self.args.dataset.lower(), data_root=self.setting.data_dir)
         train_set, test_set = data_load.get_train_set(), data_load.get_test_set()
-        if self.args.audit_function == 0:  # 基于loss error的membership inference 的审计办法
+        if self.args.making_datasets == 0:  # 简单的相邻数据集D0, D1
             D_1 = get_D1(train_set, self.num_classes)
-            return train_set, test_set, train_set, D_1, None, None, None
-        elif self.args.audit_function == 1:  # 基于memorization attack的审计方法
-            canaries_dataset = Canaries_Dataset(train_set, self.args.dataset.lower(), self.num_classes,
+            self._set_set(train_set=train_set,test_set=test_set,D_0=train_set,D_1=D_1,shadow_train_set=train_set,shadow_test_set=D_1)
+        elif self.args.audit_function == 1:  # 基于Fliping attack 构造相邻数据集D0，D1
+            flipping_dataset = Flipping_Dataset(train_set, self.args.dataset.lower(), self.num_classes,
                                                 self.args.trials,
                                                 self.setting.seed)  # trials 个标签翻转
-            return train_set, test_set, canaries_dataset.D_0, canaries_dataset.D_1, None, None, None
-        elif self.args.audit_function == 2:  # 基于Shadow model的membership inference 的审计办法
-            D_1 = get_D1(train_set, self.num_classes)
-            return train_set, test_set, train_set, D_1, train_set, D_1, None
-        else:  # 基于poisoning attack的审计方法
+            self._set_set(train_set=train_set,test_set=test_set,D_0=flipping_dataset.D_0,D_1=flipping_dataset.D_1,shadow_train_set=train_set,shadow_test_set=flipping_dataset.D_1)
+        elif self.args.audit_function == 2:  # 基于Poisoning attack 构造相邻数据集D0, D1
             if self.args.net == 'alibi':
                 label_model = ALIBI(trainset=data_load.get_train_set(), testset=data_load.get_test_set(),
-                                                num_classes=self.num_classes, setting=self.setting)
+                                    num_classes=self.num_classes, setting=self.setting)
                 model = label_model.train_model()
                 poisoned_dataset = Poisoned_Dataset(train_set,
                                                     self.args.dataset.lower(),
@@ -496,11 +500,12 @@ class Data_Factory:
                                                     trials=self.args.trials,
                                                     seed=self.setting.seed,
                                                     rand_class=self.args.classed_random)
-                return train_set, test_set, poisoned_dataset.D_0, poisoned_dataset.D_1, train_set, poisoned_dataset.D_1, label_model
+                self.M_x = label_model
+                self._set_set(train_set=train_set,test_set=test_set,D_0=poisoned_dataset.D_0,D_1=poisoned_dataset.D_1,shadow_train_set=train_set,shadow_test_set=poisoned_dataset.D_1)
             elif self.args.net == 'lp-mst':
                 train_set_list = utils.partition(data_load.get_train_set(), 2)
                 label_model = LPMST(train_set_list, testset=data_load.get_test_set(),
-                                                num_classes=self.num_classes, setting=self.setting)
+                                    num_classes=self.num_classes, setting=self.setting)
                 model = label_model.train_model()
                 # 只对第二阶段的样本进行投毒
                 poisoned_dataset = Poisoned_Dataset(train_set_list[1],
@@ -509,7 +514,8 @@ class Data_Factory:
                                                     num_classes=self.num_classes,
                                                     trials=self.args.trials, seed=self.setting.seed,
                                                     rand_class=self.args.classed_random)
-                return train_set_list, test_set, poisoned_dataset.D_0, poisoned_dataset.D_1, train_set_list[1], poisoned_dataset.D_1, label_model
+                self.M_x = label_model
+                self._set_set(train_set=train_set_list,test_set=test_set,D_0=poisoned_dataset.D_0,D_1=poisoned_dataset.D_1,shadow_train_set=train_set_list[1],shadow_test_set=poisoned_dataset.D_1)
 
     def get_data(self):
         if self.args.dataset.lower() == 'lp-mst':

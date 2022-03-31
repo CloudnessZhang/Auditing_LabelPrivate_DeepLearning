@@ -7,7 +7,8 @@ from dataclasses import dataclass
 
 @dataclass
 class Audit_result:
-    audit_function : int = 0
+    making_datasets : int = 0
+    binary_classifier: int = 0
     epsilon_theory: float = .0
     epsilon_lb: float =.0
     epsilon_opt: float =.0

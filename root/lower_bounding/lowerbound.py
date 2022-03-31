@@ -67,26 +67,14 @@ class LowerBound:
         self._epslb(D_0, D_1, num_classes, model, T, args)
 
     def _epslb(self, D_0, D_1, num_classes, model, T, args):
-        if args.audit_function == 0:  # 基于loss error的membership inference 的审计办法
+        if args.binary_classifier == 0:  # 基于loss error的membership inference 的审计办法
             self.EPS_LB = EPS_LB_SmipleMI(args.dataset.lower(), D_0, D_1, num_classes, model, T, self.epsilon_theory)
             self.inference_accuary = self.EPS_LB.inference_acc
-        elif args.audit_function == 1:  # 基于memorization attack的审计方法
+        elif args.binary_classifier == 1:  # 基于memorization attack的审计方法
             self.EPS_LB = EPS_LB_Memorization(args.dataset.lower(), D_0, D_1, num_classes, model, self.epsilon_theory)
-        elif args.audit_function == 2:  # 基于Shadow model的membership inference 的审计办法
+        elif args.binary_classifier == 2:  # 基于Shadow model的membership inference 的审计办法
             self.EPS_LB = EPS_LB_SHADOWMI(args.dataset.lower(), D_0, D_1, num_classes, model, T, self.epsilon_theory)
             self.inference_accuary = self.EPS_LB.inference_acc
-        else:  # 基于Poisoning Attack的审计办法
-            if args.binary_classifier == 0:
-                self.EPS_LB = EPS_LB_SmipleMI(args.dataset.lower(), D_0, D_1, num_classes, model, T,
-                                              self.epsilon_theory)
-                self.inference_accuary = self.EPS_LB.inference_acc
-            elif args.binary_classifier == 1:
-                self.EPS_LB = EPS_LB_Memorization(args.dataset.lower(), D_0, D_1, num_classes, model,
-                                                  self.epsilon_theory)
-            elif args.binary_classifier == 2:
-                self.EPS_LB = EPS_LB_SHADOWMI(args.dataset.lower(), D_0, D_1, num_classes, model, T,
-                                              self.epsilon_theory)
-                self.inference_accuary = self.EPS_LB.inference_acc
 
         self.eps_OPT = self.EPS_LB.eps_OPT
         self.eps_LB = self.EPS_LB.eps_LB

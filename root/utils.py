@@ -48,10 +48,6 @@ def make_deterministic(seed):
     torch.cuda.manual_seed(seed)
 
 
-def get_sess(args):
-    return f"{args.dataset}_net{args.net}_eps{args.eps}_delta{args.delta}_auditMethod{args.audit_function}"
-
-
 def partition(dataset, proportion: float) -> list:
     """数据集无交集划分
 
@@ -106,25 +102,22 @@ def predict(dataset, net):
     return pred
 
 
-def save_name(epoch, eps_theory, args):
-    # Based Average Accuracy Rate
-    if args.audit_function == 0:
-        sess = 'BaseSimpleMI_'
-    elif args.audit_function == 1:
-        sess = 'BasedMemorizationAttack_trials' + str(args.trials) + '_'
+def save_name(epoch, args):
+    if args.making_datasets == 0:
+        sess = 'SimpleDatasets_'
+    elif args.making_datasets == 1:
+        sess = 'FlippingDatasets_trials' + str(args.trials) + '_'
     elif args.audit_function == 2:
-        sess = 'BasedShadowMI_'
-    else:
-        sess = 'Base_PoisoningAttack_'
-        if args.binary_classifier == 0:
-            sess = sess + 'SimpleMI_'
-        elif args.binary_classifier == 1:
-            sess = sess + 'MemorizationAttack_trials' + str(args.trials) + '_'
-        else:
-            sess = sess + 'ShadowMI_'
-        sess = sess + 'ClassedRandom_' + str(args.classed_random) + '_'
+        sess = 'PoisoningDatasets_trials' + str(args.trials) + '_'
 
-    sess = sess + args.net + '_epsTheory' + str(eps_theory) + '_epo' + str(epoch) + '_' + args.dataset
+    if args.binary_classifier == 0:
+        sess = sess + 'SimpleMI_'
+    elif args.binary_classifier == 1:
+        sess = sess + 'MemorizationMI_'
+    elif args.binary_classifier == 2:
+        sess = sess + 'ShadowModelMI_'
+
+    sess = sess + args.net + '_epsTheory' + str(args.eps) + '_epo' + str(epoch) + '_' + args.dataset
     return sess
 
 
