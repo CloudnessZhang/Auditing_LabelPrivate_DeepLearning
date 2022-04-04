@@ -1,25 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="zyx_8080" uploadOnCheckin="b5965a69-29e5-450e-90f9-7f10c967e521" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true">
+  <component name="PublishConfigData" autoUpload="Always" serverName="zyx@219.242.112.164:8080 password" uploadOnCheckin="b5965a69-29e5-450e-90f9-7f10c967e521" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true">
     <serverData>
-      <paths name="zyx_22">
-        <serverdata>
-          <mappings>
-            <mapping deploy="/home/zyx/data/Auditing_LabelPrivate_DeepLearning" local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="zyx_8080">
+      <paths name="zyx@219.242.112.164:8080 password">
         <serverdata>
           <mappings>
             <mapping deploy="/home/zyx/data/Auditing_LabelPrivate_DeepLearning" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>
-      <paths name="zyx_LP_MST">
+      <paths name="zyx_Auditing">
         <serverdata>
           <mappings>
-            <mapping deploy="/data/zyx/Auditing_LabelPrivate_DeepLearning" local="$PROJECT_DIR$" web="/" />
+            <mapping local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

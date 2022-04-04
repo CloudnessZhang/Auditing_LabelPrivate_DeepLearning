@@ -9,7 +9,6 @@ from dataclasses import dataclass
 class Audit_result:
     making_datasets_method : int = 0
     binary_classifier_method: int = 0
-    epsilon_theory: float = .0
     epsilon_lb: float =.0
     epsilon_opt: float =.0
     model_accuary: float =.0

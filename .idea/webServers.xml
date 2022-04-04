@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="a40f8e2f-05d4-4696-918d-b10baf402e3c" name="zyx_Auditing">
+        <fileTransfer rootFolder="/home/zyx/data/Auditing_LabelPrivate_DeepLearning" accessType="SFTP" host="219.242.112.164" port="8080" sshConfigId="9053b495-f254-4cd0-8388-cb7dc84211eb" sshConfig="zyx@219.242.112.164:8080 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

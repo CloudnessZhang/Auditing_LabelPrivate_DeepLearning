@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Subset
 import random
 import torch.nn.functional as f
+import openpyxl as op
 from make_dataset.DataFactory import MNIST_TRAIN_TRANS, CIFAR10_TRAIN_TRANS, CIFAR100_TRAIN_TRANS
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -68,7 +69,7 @@ def get_data_targets(dataset, dataname) -> (torch.Tensor, torch.Tensor):
         data, targets = dataset.dataset.data[dataset.indices], np.asarray(dataset.dataset.targets)[dataset.indices]
     else:
         data, targets = dataset.data, dataset.targets
-    if dataname == 'cifar10':
+    if dataname == 'cifar10' or dataname == 'cifar100':
         return torch.from_numpy(data), torch.tensor(targets)
     elif dataname == 'mnist':
         return data, torch.tensor(targets)
@@ -163,3 +164,24 @@ def partition(dataset, T) -> list:
         subset = Subset(dataset, list(range(step * t, step * (t + 1))))
         data_list.append(subset)
     return data_list
+
+
+def write_xlsx(path, args, auditing):
+    xlsx = op.open(path)
+    xlsx_sheet = xlsx.get_sheet_by_name('Sheet1')
+    # index = xlsx_sheet.max_row()+1
+    value_input = [args.making_datasets, args.binary_classifier, args.net, args.dataset, args.epoch, args.eps,
+                   auditing.model_loss, auditing.model_accuary, auditing.inference_accuary, auditing.epsilon_opt,
+                   auditing.epsilon_lb]
+    xlsx_sheet.append(value_input)
+    xlsx.save(path)
+
+    # for col in range(11):
+
+    # xlsx = xlrd.open_workbook(path)  # 定义一个excel文件的workbook对象
+    # print('data的类型为：', type(xlsx))
+    # xlsx_copy = copy(xlsx)  # 获取data的copy对象
+    # sheet_copy = xlsx_copy.get_sheet(0)  # 从data_copy对象中获取第一个sheet对象
+    #
+    # sheet_copy.write(1, 11, '测试写入内容')  # 向sheet的某个单元格写入值
+    # xlsx_copy.save(path)  # 写入完成后保存data的copy对象
