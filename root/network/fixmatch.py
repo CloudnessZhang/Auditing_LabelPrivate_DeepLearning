@@ -155,19 +155,19 @@ def train(
     labeled_trainloader = DataLoader(
         labeled_dataset,
         batch_size=batch_size,
-        drop_last=True,
+        drop_last=True,num_workers=4
     )
 
     unlabeled_trainloader = DataLoader(
         unlabeled_dataset,
         batch_size=batch_size * fixmatch_config.mu,
-        drop_last=True,
+        drop_last=True,num_workers=4
     )
 
     test_loader = DataLoader(
         test_dataset,
         sampler=SequentialSampler(test_dataset),
-        batch_size=batch_size,
+        batch_size=batch_size,num_workers=4
     )
 
     logging.info(f"Labeled dataloader: {len(labeled_trainloader)}")

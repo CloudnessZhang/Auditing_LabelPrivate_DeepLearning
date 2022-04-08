@@ -492,7 +492,7 @@ class Data_Factory:
         elif self.args.making_datasets == 2:  # 基于Poisoning attack 构造相邻数据集D0, D1
             if self.args.net == 'alibi':
                 label_model = ALIBI(trainset=data_load.get_train_set(), testset=data_load.get_test_set(),
-                                    num_classes=self.num_classes, setting=self.setting)
+                                    num_classes=self.num_classes, setting=self.setting,args=self.args)
                 model = label_model.train_model()
                 poisoned_dataset = Poisoned_Dataset(train_set,
                                                     self.args.dataset.lower(),
@@ -505,7 +505,7 @@ class Data_Factory:
             elif self.args.net == 'lp-mst':
                 train_set_list = utils.partition(data_load.get_train_set(), 2)
                 label_model = LPMST(train_set_list, testset=data_load.get_test_set(),
-                                    num_classes=self.num_classes, setting=self.setting)
+                                    num_classes=self.num_classes, setting=self.setting,args=self.args)
                 model = label_model.train_model()
                 # 只对第二阶段的样本进行投毒
                 poisoned_dataset = Poisoned_Dataset(train_set_list[1],
@@ -514,11 +514,11 @@ class Data_Factory:
                                                     num_classes=self.num_classes,
                                                     trials=self.args.trials, seed=self.setting.seed,
                                                     rand_class=self.args.classed_random)
-                self._set_set(train_set=train_set_list,test_set=test_set,D_0=poisoned_dataset.D_0,D_1=poisoned_dataset.D_1,shadow_train_set=train_set_list[1],shadow_test_set=poisoned_dataset.D_1,poisoning_set=poisoned_dataset.poison_dataset)
+                self._set_set(train_set=train_set,test_set=test_set,D_0=poisoned_dataset.D_0,D_1=poisoned_dataset.D_1,shadow_train_set=train_set_list[1],shadow_test_set=poisoned_dataset.D_1,poisoning_set=poisoned_dataset.poison_dataset)
             self.audit_result.model_accuary = label_model.acc
             self.audit_result.model_loss = label_model.loss
             return model
     def get_data(self):
-        if self.args.dataset.lower() == 'lp-mst':
+        if self.args.net.lower() == 'lp-mst':
             self.train_set = utils.partition(self.train_set, 2)
         return self.train_set, self.test_set, self.D_0, self.D_1, self.shadow_train_set, self.shadow_test_set, self.poisoning_set, self.audit_result

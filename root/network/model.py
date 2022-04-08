@@ -48,7 +48,7 @@ class ResNet18:
         model = self.model
         # DEFINE OPTIMIZER
         optimizer = self.optimizer
-        train_loader = data.DataLoader(trainset, setting.learning.batch_size, shuffle=True, drop_last=False)
+        train_loader = data.DataLoader(trainset, setting.learning.batch_size, shuffle=True, drop_last=False,num_workers=4)
 
         cudnn.benchmark = True
 
@@ -120,7 +120,7 @@ class AttackModel:
         model = self.model
         # DEFINE OPTIMIZER
         optimizer = self.optimizer
-        train_loader = data.DataLoader(trainset, setting.learning.batch_size, shuffle=True, drop_last=False)
+        train_loader = data.DataLoader(trainset, setting.learning.batch_size, shuffle=True, drop_last=False,num_workers=4)
 
         cudnn.benchmark = True
 
@@ -153,7 +153,7 @@ class AttackModel:
 
     def predict_proba(self, X):
         net = self.model
-        Xloader = data.DataLoader(X, 128, shuffle=False)
+        Xloader = data.DataLoader(X, 128, shuffle=False,num_workers=4)
         torch.cuda.empty_cache()
         with torch.no_grad():
             for i, x_batch in enumerate(Xloader):

@@ -17,6 +17,29 @@ from tqdm import tqdm
 import utils
 from args.args_Setting import ALIBI_Settings
 
+import sys
+from torch.multiprocessing import reductions
+from multiprocessing.reduction import ForkingPickler
+from torch.utils.data import dataloader
+
+default_collate_func = dataloader.default_collate
+
+
+def default_collate_override(batch):
+    dataloader._use_shared_memory = False
+    return default_collate_func(batch)
+
+
+setattr(dataloader, 'default_collate', default_collate_override)
+
+for t in torch._storage_classes:
+    if sys.version_info[0] == 2:
+        if t in ForkingPickler.dispatch:
+            del ForkingPickler.dispatch[t]
+    else:
+        if t in ForkingPickler._extra_reducers:
+            del ForkingPickler._extra_reducers[t]
+
 EPS = 1e-10
 ROOT2 = 2.0 ** 0.5
 
@@ -47,7 +70,7 @@ class RandomizedLabelPrivacy:
             seed if seed is not None else (torch.randint(0, 255, (1,)).item())
         )  # this is not secure but ok for experiments
         self.device = device
-        self.randomizer = torch.Generator(device) if self.sigma > 0 else None
+        self.randomizer = torch.Generator(device='cpu') if self.sigma > 0 else None
         self.reset_randomizer()
         self.step: int = 0
         self.eps: float = float("inf")
@@ -85,7 +108,7 @@ class RandomizedLabelPrivacy:
     def noise(self, shape):
         if not self._train or self.randomizer is None:
             return None
-        noise = torch.zeros(shape, device=self.device)
+        noise = torch.zeros(shape)
         if self.isNormal:
             noise.normal_(0, self.sigma, generator=self.randomizer)
         else:  # is Laplace
@@ -125,7 +148,7 @@ class NoisedCIFAR():
         onehot = torch.zeros(n)
         onehot[label] = 1
         rand = self.rlp.noise((n,))
-        return onehot if rand is None else onehot.to(self.rlp.device) + rand
+        return onehot if rand is None else onehot + rand
 
     def __len__(self):
         return self.cifar.__len__()
@@ -465,7 +488,7 @@ class Ohm:
 # 核心：ALIBI
 ###########################################################
 class ALIBI:
-    def __init__(self, trainset, testset, num_classes=10, setting=ALIBI_Settings):
+    def __init__(self, trainset, testset, num_classes=10, setting=ALIBI_Settings, args=None):
         self.trainset = trainset
         self.testset = testset
         self.setting = setting
@@ -477,12 +500,12 @@ class ALIBI:
             mechanism=self.setting.privacy.mechanism,
             device=self.device,
         )
-        self.acc :float = .0
-        self.loss:float = .0
+        self.args = args
+        self.acc: float = .0
+        self.loss: float = .0
         self._model()
         self._criterion()
         self._optimizer()
-
 
     def _model(self):
         net = torchvision.models.resnet18()
@@ -515,7 +538,7 @@ class ALIBI:
         for i, batch in enumerate(tqdm(train_loader)):
             images = batch[0].to(self.device)  # x
             targets = batch[1].to(self.device)  # soft_target
-            labels = targets if len(batch) == 2 else batch[2].to(self.device)  # y
+            labels = targets if len(batch) == 2 else batch[2]  # y
             # compute output
 
             optimizer.zero_grad()
@@ -524,7 +547,7 @@ class ALIBI:
             # 带贝叶斯计算的loss函数，计算中对target进行校正
             loss = criterion(output, targets)
             preds = np.argmax(output.detach().cpu().numpy(), axis=1)
-            labels = labels.detach().cpu().numpy()
+            labels = labels.numpy()
 
             # measure accuracy and record loss
             acc1 = (preds == labels).mean()
@@ -541,9 +564,10 @@ class ALIBI:
             f"Acc: {np.mean(acc) :.6f} ",
         )
 
-        if(np.mean(losses) < self.loss or self.loss==.0):
+        if (np.mean(losses) < self.loss or self.loss == .0):
             self.loss = np.mean(losses)
 
+        torch.cuda.empty_cache()
         return np.mean(acc), np.mean(losses)
 
     def _test(self, model, test_loader, criterion, epoch):
@@ -571,7 +595,7 @@ class ALIBI:
             f"Loss: {np.mean(losses):.6f} ",
             f"Acc: {np.mean(acc) :.6f} ",
         )
-        if(np.mean(acc) > self.acc):
+        if (np.mean(acc) > self.acc):
             self.acc = np.mean(acc)
 
         return np.mean(acc), np.mean(losses)
@@ -609,12 +633,13 @@ class ALIBI:
             batch_size=setting.learning.batch_size,
             shuffle=True,
             drop_last=True,
+            num_workers=4
         )
 
         test_loader = data.DataLoader(
             self.testset,
             batch_size=setting.learning.batch_size,
-            shuffle=False
+            shuffle=False, num_workers=4
         )
 
         cudnn.benchmark = True
@@ -625,12 +650,13 @@ class ALIBI:
             assert isinstance(criterion, Ohm)  # double check!
 
             # train for one epoch
-            acc, loss = self._train(self.model, train_loader, optimizer, criterion, epoch)
+            train_acc, train_loss = self._train(self.model, train_loader, optimizer, criterion, epoch)
             # evaluate on validation set
             if self.randomized_label_privacy is not None:
                 self.randomized_label_privacy.eval()
-            acc, loss = self._test(self.model, test_loader, criterion, epoch)
+            test_acc, test_loss = self._test(self.model, test_loader, criterion, epoch)
             torch.cuda.empty_cache()
+            # utils.draw(train_acc, train_loss, test_acc, test_loss, epoch, self.args)
         return self.model
 
     def predict_proba(self, X_train):
@@ -639,6 +665,7 @@ class ALIBI:
         torch.cuda.empty_cache()
         with torch.no_grad():
             y = net(X)
+        torch.cuda.empty_cache()
         return f.softmax(y)
 
     def get_eps(self):
@@ -653,6 +680,7 @@ class ALIBI:
         torch.cuda.empty_cache()
         with torch.no_grad():
             y = np.argmax(net(X).detach().cpu().numpy(), axis=1)
+        torch.cuda.empty_cache()
         return y
 
     def getModel(self):

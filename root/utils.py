@@ -7,10 +7,11 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.utils.data import Subset
+from make_dataset.DataFactory import MNIST_TRAIN_TRANS,CIFAR10_TRAIN_TRANS,CIFAR100_TRAIN_TRANS
 import random
 import torch.nn.functional as f
 import openpyxl as op
-from make_dataset.DataFactory import MNIST_TRAIN_TRANS, CIFAR10_TRAIN_TRANS, CIFAR100_TRAIN_TRANS
+from torch.utils.tensorboard import SummaryWriter
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -89,7 +90,7 @@ def get_targets(datasset):
 
 
 def predict_proba(dataset, net) -> torch.Tensor:
-    dataloader = DataLoader(dataset, 128, shuffle=False)
+    dataloader = DataLoader(dataset, 128, shuffle=False, num_workers=4)
     torch.cuda.empty_cache()
     with torch.no_grad():
         for i, (x_batch, _), in enumerate(dataloader):
@@ -103,7 +104,7 @@ def predict_proba(dataset, net) -> torch.Tensor:
 
 
 def predict(dataset, net):
-    dataloader = DataLoader(dataset, 128, shuffle=False)
+    dataloader = DataLoader(dataset, 128, shuffle=False, num_workers=4)
     torch.cuda.empty_cache()
     with torch.no_grad():
         for i, (x_batch, _), in enumerate(dataloader):
@@ -185,3 +186,16 @@ def write_xlsx(path, args, auditing):
     #
     # sheet_copy.write(1, 11, '测试写入内容')  # 向sheet的某个单元格写入值
     # xlsx_copy.save(path)  # 写入完成后保存data的copy对象
+
+def draw(train_Acc, train_Loss, test_Acc, test_Loss, epoch, Args):
+    # 定义tensorboard
+    # config.tb_dir为保存tensorboard文件的路径
+    tb_writer = SummaryWriter("../result/draw")
+    # tag即标题
+    train_tag = Args.net + Args.dataset + 'epoch_' +str(Args.epoch) + 'Train'
+    test_tag = Args.net + Args.dataset + 'epoch_' +str(Args.epoch) + 'Test'
+
+    tb_writer.add_scalars(main_tag=train_tag, tag_scalar_dict={'Train-Acc': train_Acc}, global_step=epoch)
+    tb_writer.add_scalars(main_tag=train_tag, tag_scalar_dict={'Train-Loss': train_Loss}, global_step=epoch)
+    tb_writer.add_scalars(main_tag=test_tag, tag_scalar_dict={'Test-Acc': test_Acc}, global_step=epoch)
+    tb_writer.add_scalars(main_tag=test_tag, tag_scalar_dict={'Test-Loss': test_Loss}, global_step=epoch)

@@ -14,6 +14,7 @@ class Audit_result:
     model_accuary: float =.0
     model_loss:float =.0
     inference_accuary: float =.0
+    time:float = .0
 ###########################################################
 # ALIBI args
 ###########################################################
@@ -31,7 +32,7 @@ class ALIBI_LabelPrivacy:
 @dataclass
 class ALIBI_Learning:
     lr: float = 0.1
-    batch_size: int = 128
+    batch_size: int = 64
     epochs: int = 1
     momentum: float = 0.9
     weight_decay: float = 1e-4
@@ -76,7 +77,7 @@ class LPMST_Settings:
 
 
 ###########################################################
-# LP-MST args
+# PATE args
 ###########################################################
 import os
 from dataclasses import dataclass

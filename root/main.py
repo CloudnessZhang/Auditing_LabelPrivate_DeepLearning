@@ -9,6 +9,7 @@ import torch
 import utils
 from make_dataset import DataFactory
 from args.args_Setting import ALIBI_Settings, Audit_result, LPMST_Settings
+from make_dataset.DataFactory import Data_Loader
 from network.model import SUPPORTED_MODEL, ResNet18, AttackModel
 from network.alibi_model import ALIBI
 from network.lpmst_model import LPMST
@@ -63,6 +64,7 @@ def main_work(args):
         # torch.save(prior_model, model_path)
         # print("相邻数据集已生成，已保存~")
     train_set, test_set, D_0, D_1, shadow_train_set, shadow_test_set, poisoning_set, audit_result = data_make.get_data()
+    torch.cuda.empty_cache()
 
     ###########################################################
     # 在D0数据集上训练模型，得到模型和理论上的隐私损失: 输入train_set 和 test_set
@@ -84,9 +86,9 @@ def main_work(args):
             model = prior_model
         else:
             if args.net == 'alibi':
-                label_model = ALIBI(train_set, test_set, num_classes, setting)
+                label_model = ALIBI(train_set, test_set, num_classes, setting, args)
             elif args.net == 'lp-mst':
-                label_model = LPMST(train_set, test_set, num_classes, setting)
+                label_model = LPMST(train_set, test_set, num_classes, setting, args)
             model = label_model.train_model()
             audit_result.model_accuary = label_model.acc
             audit_result.model_loss = label_model.loss
@@ -94,6 +96,7 @@ def main_work(args):
         # torch.save(model, model_path)
         # utils.save_Class(audit_result, audit_result_path)
         print("Label Private Deep Learning 模型训练完毕，已保存~")
+    torch.cuda.empty_cache()
 
     ###########################################################
     # 生成二分类器 ，得到二分类器T:输入train_set 和 D_1
@@ -110,7 +113,10 @@ def main_work(args):
         print("Binary Classifier加载完毕~今天也要加油呀！~")
     else:
         if args.binary_classifier == 0:  # Simple_MI
-            T = base_MI.BaseMI(D_train=train_set, dataname=args.dataset.lower(), net=model)
+            if args.net == 'lp-mst':
+                T = base_MI.BaseMI(D_train=train_set[1], dataname=args.dataset.lower(), net=model)
+            else:
+                T = base_MI.BaseMI(D_train=train_set, dataname=args.dataset.lower(), net=model)
         elif args.binary_classifier == 1:  # Memorization attack
             T = None
         elif args.binary_classifier == 2:  # Shadow Model
@@ -156,14 +162,44 @@ def main_work(args):
 
 
 def main(args):
-    if args.runAll:
-        for net in ['alibi','lp-mst']:
-                args.net = net
-                for dataset in ['mnist','cifar10','cifar100']:
-                    args.dataset = dataset
-                    for eps in [1, 2, 4, 10]:
-                        args.eps = eps
+
+    if args.Supplementary:
+        args.making_datasets = 0
+        args.binary_classifier = 0
+        args.epoch = 200
+        for net in ['alibi', 'lp-mst']:
+            args.net = net
+            for dataset in ['cifar10', 'cifar100']:
+                args.dataset = dataset
+                if dataset == 'cifar10':
+                    for eps in [ 2, 4, 10, 100]:
                         main_work(args)
+                        torch.cuda.empty()
+
+                else:
+                    for eps in [1, 2, 4, 10, 100]:
+                        main_work(args)
+                        torch.cuda.empty()
+
+    if args.runAll:
+        for dataset in ['mnist', 'cifar10', 'cifar100']:
+            args.dataset = dataset
+            # if dataset == 'mnist':
+            #     args.epoch = 10
+            # for eps in [1, 2, 4, 10]:
+            #     args.eps = eps
+            #     main_work(args)
+            #     torch.cuda.empty_cache()
+            if dataset == 'mnist':
+                args.epoch = 10
+                args.eps = 10
+                main_work(args)
+                torch.cuda.empty_cache()
+            else:
+                for eps in [1, 2, 4, 10]:
+                    args.eps = eps
+                    main_work(args)
+                    torch.cuda.empty_cache()
     else:
         main_work(args)
 
@@ -171,24 +207,27 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Auditing Label Private Deep Learning')  # argparse 命令行参数解析器
-    parser.add_argument('--runAll',default=False,type=bool)
+    parser.add_argument('--Supplementary', default=True, type=bool)
+
+    parser.add_argument('--runAll', default=False, type=bool)
     parser.add_argument('--resume', default=0, type=int, help='where to star resume'
                                                               '0: do not need to resume'
                                                               '1: resume datasets'
                                                               '2: resume datasets and model'
                                                               '3: resume datasets, model and binary classifier'
                                                               '4: all resume')
-    parser.add_argument('--dataset', default='mnist', type=str, help='dataset name')
+    parser.add_argument('--dataset', default='cifar100', type=str, help='dataset name')
     parser.add_argument('--net', default='alibi', type=str, help='label private deep learning to be audited')
-    parser.add_argument('--epoch', default=0, type=int, help='the epoch model trains')
-    parser.add_argument('--eps', default=1, type=float, help='privacy parameter epsilon')
+    parser.add_argument('--epoch', default=50, type=int, help='the epoch model trains')
+    parser.add_argument('--eps', default=2, type=float, help='privacy parameter epsilon')
     parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')
     parser.add_argument('--trials', default=5000, type=float, help='The number of sample labels changed is trials')
-    parser.add_argument('--making_datasets', default=0, type=int, help='the function of making datasets:'
+
+    parser.add_argument('--making_datasets', default=2, type=int, help='the function of making datasets:'
                                                                        '0: simple datasets masking'
                                                                        '1: flipping attack'
                                                                        '2: poisoning attack')
-    parser.add_argument('--binary_classifier', default=0, type=int,
+    parser.add_argument('--binary_classifier', default=2, type=int,
                         help='the binary classifier to be combined with poisoned attack:'
                              '0: simple inference attack,'
                              '1: memorization attack,'

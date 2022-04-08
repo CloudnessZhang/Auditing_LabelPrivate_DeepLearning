@@ -1,5 +1,5 @@
 import math
-import time
+from torch.utils.tensorboard import SummaryWriter
 import random
 
 import numpy as np
@@ -8,11 +8,38 @@ import torchvision
 from torch import nn, optim
 from torch.backends import cudnn
 from torch.utils.data import DataLoader
+from torch.utils.data import dataloader
 from tqdm import tqdm
+
+import utils
 from args.args_Setting import LPMST_Learning
 
+import sys
+from torch.multiprocessing import reductions
+from multiprocessing.reduction import ForkingPickler
+from multiprocessing.reduction import ForkingPickler
+
+default_collate_func = dataloader.default_collate
+
+
+def default_collate_override(batch):
+    dataloader._use_shared_memory = False
+    return default_collate_func(batch)
+
+
+setattr(dataloader, 'default_collate', default_collate_override)
+
+for t in torch._storage_classes:
+    if sys.version_info[0] == 2:
+        if t in ForkingPickler.dispatch:
+            del ForkingPickler.dispatch[t]
+    else:
+        if t in ForkingPickler._extra_reducers:
+            del ForkingPickler._extra_reducers[t]
+
+
 class RR_WithPrior:
-    def __init__(self, epsilon:float):
+    def __init__(self, epsilon: float):
         self.epsilon = epsilon
 
     def rr(self, y: int, k, Y_k):
@@ -45,7 +72,7 @@ class RR_WithPrior:
         n_label = pr.shape[0]  # 共n类标签
         Y_k = torch.argsort(pr, descending=True)[:k].tolist()  # [k]
         if y in Y_k:
-            out = self.rr(k=k, y=y,Y_k=Y_k)
+            out = self.rr(k=k, y=y, Y_k=Y_k)
         else:
             out = random.choice(Y_k)
         return out
@@ -69,12 +96,12 @@ class RR_WithPrior:
             top_index = torch.argsort(pr, descending=True, dim=1)[:, :k]  # [B,k] 返回概率最大的前k个值的指数
             # 前k个大的概率求和
             batch = 0
-            w_k =[] #表示k时，w的值
+            w_k = []  # 表示k时，w的值
 
             for index in top_index:  # 遍历所有的输入值y的前k个值的指数的和
                 w_k_singal = 0
                 for i in range(k):  # 对第batch个输入值y的前k个大的概率值求和
-                    w_k_singal += pr[batch,index[i]].item()
+                    w_k_singal += pr[batch, index[i]].item()
                 batch = batch + 1
                 w_k.append(w_k_singal * p)  # [B,1]
             w.append(torch.tensor(w_k))
@@ -90,24 +117,26 @@ class RR_WithPrior:
 
         return best_k.float().mean(), torch.Tensor(out).long()
 
+
 class LPMST:
-    def __init__(self, trainset, testset, num_classes=10, setting=LPMST_Learning):
+    def __init__(self, trainset, testset, num_classes=10, setting=LPMST_Learning, args=None):
         self.trainset = trainset
         self.testset = testset
         self.setting = setting
         self.epsilon = setting.epsilon
         self.num_classes = num_classes
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.args = args
 
-        self.acc :float = .0
-        self.loss:float = .0
+        self.acc: float = .0
+        self.loss: float = .0
 
     def _model(self):
         net = torchvision.models.resnet18()
         net.fc = nn.Linear(net.fc.in_features, self.num_classes)
         return net.to(self.device)
 
-    def _optimizer(self,model):
+    def _optimizer(self, model):
         return optim.SGD(
             model.parameters(),
             lr=self.setting.learning.lr,
@@ -221,7 +250,6 @@ class LPMST:
             losses.append(float(loss.item()))
             acc.append(float(acc1))
 
-
             loss.backward()
             optimizer.step()
         print(
@@ -230,7 +258,7 @@ class LPMST:
             f"Acc: {np.mean(acc) :.6f} ",
         )
 
-        if(np.mean(losses) < self.loss or self.loss==.0):
+        if (np.mean(losses) < self.loss or self.loss == .0):
             self.loss = np.mean(losses)
 
         return np.mean(acc), np.mean(losses)
@@ -242,18 +270,20 @@ class LPMST:
         best_acc = 0
         n_acc = 0
         n_label = 0
-        test_loader = DataLoader(self.testset,batch_size=setting.learning.batch_size,shuffle=False)
+        test_loader = DataLoader(self.testset, batch_size=setting.learning.batch_size, shuffle=False, num_workers=4)
 
         last_net = self._model().cpu()
         for idx, subset in enumerate(self.trainset):  # 分批次训练
+            torch.cuda.empty_cache()
 
             print("Stage ", idx)
-            dataloader = DataLoader(subset, batch_size=setting.learning.batch_size, shuffle=True, drop_last=True)
+            dataloader = DataLoader(subset, batch_size=setting.learning.batch_size, shuffle=True, drop_last=True,
+                                    num_workers=4)
 
             # 生成由RRWithPrior得到的新训练集
             print('==> Preparing noise data..')
             l_avgk = []
-            for data, label in tqdm(dataloader):# tqdm 表现为对该批次label进行LDP操作的进度条
+            for data, label in tqdm(dataloader):  # tqdm 表现为对该批次label进行LDP操作的进度条
                 torch.cuda.empty_cache()
                 data, label = data.cpu(), label.cpu()
                 # pr = (p1,...,pk) 是xi 经上一批次训练得的模型M(t) 预测的概率
@@ -275,7 +305,7 @@ class LPMST:
             print(f"noisy dataset with {n_label} data has {n_acc / n_label} acc")
 
             # 准备模型
-            net =self._model()
+            net = self._model()
             criterion = nn.CrossEntropyLoss()
             optimizer = self._optimizer(net)
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200)
@@ -284,13 +314,16 @@ class LPMST:
             # 训练 & 测试
             for e in range(setting.learning.epochs):  # 每批次内进行n_epoch轮训练
                 train_loss, train_acc = self._train(net, optimizer=optimizer, criterion=criterion, noise_set=noise_set,
-                                              device=self.device, epoch=e)
-                test_loss, test_acc = self._test(net, criterion=criterion, testloader=test_loader, device=self.device,epoch=e)
+                                                    device=self.device, epoch=e)
+                test_loss, test_acc = self._test(net, criterion=criterion, testloader=test_loader, device=self.device,
+                                                 epoch=e)
                 torch.cuda.empty_cache()
 
                 best_acc = test_acc if test_acc > best_acc else best_acc
                 scheduler.step()
                 # cache net
+                # if idx == 1:
+                #     utils.draw(train_acc, train_loss, test_acc, test_loss, e, self.args)
             last_net = net
             print("best acc is:", best_acc)
         self.model = last_net
