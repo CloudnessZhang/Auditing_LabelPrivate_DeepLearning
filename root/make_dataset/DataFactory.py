@@ -275,7 +275,8 @@ class Poisoned_Dataset:
         # 任意类中,随机选择N个样本,返回对应的位置和target
         labels, targets = utils.get_data_targets(self.train_dataset, self.dataname)
         np.random.seed(self.seed)
-        rand_positions = np.random.choice(len(self.train_dataset.targets), self.poison_num, replace=False)
+        assert len(targets)>self.poison_num
+        rand_positions = np.random.choice(len(targets), self.poison_num, replace=False)
         # 获取随机选中的x,y
         y = targets[rand_positions]
         x = labels[rand_positions]
@@ -488,7 +489,13 @@ class Data_Factory:
             flipping_dataset = Flipping_Dataset(train_set, self.args.dataset.lower(), self.num_classes,
                                                 self.args.trials,
                                                 self.setting.seed)  # trials 个标签翻转
-            self._set_set(train_set=train_set,test_set=test_set,D_0=flipping_dataset.D_0,D_1=flipping_dataset.D_1,shadow_train_set=train_set,shadow_test_set=flipping_dataset.D_1,poisoning_set=flipping_dataset.canaries_set)
+            self._set_set(train_set=train_set,
+                          test_set=test_set,
+                          D_0=flipping_dataset.D_0,
+                          D_1=flipping_dataset.D_1,
+                          shadow_train_set=train_set,
+                          shadow_test_set=flipping_dataset.D_1,
+                          poisoning_set=flipping_dataset.canaries_set)
         elif self.args.making_datasets == 2:  # 基于Poisoning attack 构造相邻数据集D0, D1
             if self.args.net == 'alibi':
                 label_model = ALIBI(trainset=data_load.get_train_set(), testset=data_load.get_test_set(),

@@ -7,7 +7,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.utils.data import Subset
-from make_dataset.DataFactory import MNIST_TRAIN_TRANS,CIFAR10_TRAIN_TRANS,CIFAR100_TRAIN_TRANS
+from make_dataset.DataFactory import MNIST_TRAIN_TRANS, CIFAR10_TRAIN_TRANS, CIFAR100_TRAIN_TRANS
 import random
 import torch.nn.functional as f
 import openpyxl as op
@@ -173,7 +173,7 @@ def write_xlsx(path, args, auditing):
     # index = xlsx_sheet.max_row()+1
     value_input = [args.making_datasets, args.binary_classifier, args.net, args.dataset, args.epoch, args.eps,
                    auditing.model_loss, auditing.model_accuary, auditing.inference_accuary, auditing.epsilon_opt,
-                   auditing.epsilon_lb]
+                   auditing.epsilon_lb, auditing.time]
     xlsx_sheet.append(value_input)
     xlsx.save(path)
 
@@ -187,13 +187,14 @@ def write_xlsx(path, args, auditing):
     # sheet_copy.write(1, 11, '测试写入内容')  # 向sheet的某个单元格写入值
     # xlsx_copy.save(path)  # 写入完成后保存data的copy对象
 
+
 def draw(train_Acc, train_Loss, test_Acc, test_Loss, epoch, Args):
     # 定义tensorboard
     # config.tb_dir为保存tensorboard文件的路径
     tb_writer = SummaryWriter("../result/draw")
     # tag即标题
-    train_tag = Args.net + Args.dataset + 'epoch_' +str(Args.epoch) + 'Train'
-    test_tag = Args.net + Args.dataset + 'epoch_' +str(Args.epoch) + 'Test'
+    train_tag = Args.net + Args.dataset + 'epoch_' + str(Args.epoch) + 'Train'
+    test_tag = Args.net + Args.dataset + 'epoch_' + str(Args.epoch) + 'Test'
 
     tb_writer.add_scalars(main_tag=train_tag, tag_scalar_dict={'Train-Acc': train_Acc}, global_step=epoch)
     tb_writer.add_scalars(main_tag=train_tag, tag_scalar_dict={'Train-Loss': train_Loss}, global_step=epoch)
