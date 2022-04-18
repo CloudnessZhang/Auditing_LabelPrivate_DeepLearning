@@ -170,7 +170,7 @@ def main_work(args):
     utils.write_xlsx(result_xlsx_path, args, audit_result)
 
 
-def set_args(args, making_datasets=None, binary_classifier=None, eps=None, dataset=None, net=None):
+def set_args(args, making_datasets=None, binary_classifier=None, eps=None, dataset=None, net=None, epoch=None):
     if making_datasets is not None:
         args.making_datasets = making_datasets
     if binary_classifier is not None:
@@ -181,89 +181,23 @@ def set_args(args, making_datasets=None, binary_classifier=None, eps=None, datas
         args.dataset = dataset
     if net is not None:
         args.net = net
+    if epoch is not None:
+        args.epoch = epoch
     return args
 
 
 def main(args):
-    if args.Supplementary:
-        # for epoch in [10, 200]:
-        #     args.epoch = epoch
-        #     for eps in [1, 2, 4, 10]:
-        #         main_work(
-        #             set_args(args, dataset='cifar10', making_datasets=2, binary_classifier=2, eps=eps, net='alibi'))
-        #         main_work(
-        #             set_args(args, dataset='cifar10', making_datasets=2, binary_classifier=0, eps=eps, net='alibi'))
-        #         main_work(
-        #             set_args(args, dataset='cifar10', making_datasets=0, binary_classifier=2, eps=eps, net='alibi'))
-
-        # for dataset in ['cifar10', 'cifar100']:  # MNIST-100-LP-MST单独跑
-        #     args.epoch = 200
-        #     if dataset == 'cifar10':
-        #         for eps in [4, 10, 100]:
-        #             main_work(
-        #                 set_args(args, dataset=dataset, making_datasets=0, binary_classifier=0, eps=eps, net='lp-mst'))
-        #     else:
-        #         for eps in [1, 2, 4, 10, 100]:
-        #             main_work(
-        #                 set_args(args, dataset=dataset, making_datasets=0, binary_classifier=0, eps=eps, net='lp-
-
-        for dataset in ['mnist', 'cifar10', 'cifar100']:
-            args.epoch = 50
-            if dataset == 'mnist':
-                main_work(set_args(args, dataset=dataset, making_datasets=2, binary_classifier=2, eps=1, net='alibi'))
-                main_work(set_args(args, dataset=dataset, making_datasets=0, binary_classifier=2, eps=1, net='lp-mst'))
-            elif dataset == 'cifar10':
-                main_work(set_args(args, dataset=dataset, making_datasets=2, binary_classifier=0, eps=1, net='alibi'))
-                main_work(set_args(args, dataset=dataset, making_datasets=0, binary_classifier=2, eps=1, net='alibi'))
-                main_work(set_args(args, dataset=dataset, making_datasets=2, binary_classifier=2, eps=1, net='alibi'))
-                main_work(set_args(args, dataset=dataset, making_datasets=0, binary_classifier=2, eps=1, net='lp-mst'))
-            elif dataset == 'cifar100':
-                main_work(set_args(args, dataset=dataset, making_datasets=2, binary_classifier=0, eps=1, net='alibi'))
-                main_work(set_args(args, dataset=dataset, making_datasets=0, binary_classifier=2, eps=1, net='alibi'))
-                main_work(set_args(args, dataset=dataset, making_datasets=0, binary_classifier=2, eps=1, net='lp-mst'))
-
-        # for dataset in ['mnist', 'cifar10', 'cifar100']:
-        #     if dataset == 'mnist':
-        #     main_work(
-        #         args=set_args(args, dataset=dataset, making_datasets=0, binary_classifier=0, eps=10, net='alibi'))
-        #     main_work(
-        #         args=set_args(args, dataset=dataset, making_datasets=1, binary_classifier=0, eps=4, net='alibi'))
-        #     main_work(
-        #         args=set_args(args, dataset=dataset, making_datasets=2, binary_classifier=0, eps=10, net='alibi'))
-        #     main_work(
-        #         args=set_args(args, dataset=dataset, making_datasets=0, binary_classifier=2, eps=10, net='alibi'))
-        #     for eps in [1, 2, 4, 10]:
-        #         main_work(args=set_args(args, dataset=dataset, making_datasets=1, binary_classifier=2, eps=eps,
-        #                                 net='alibi'))
-        # if dataset == 'cifar10':
-        #     for eps in [1, 2, 4, 10]:
-        #         main_work(args=set_args(args, dataset=dataset, making_datasets=1, binary_classifier=1, eps=eps,
-        #                                 net='alibi'))
-        # if dataset == 'cifar100':
-        #     for eps in [1, 2]:
-        #         main_work(args=set_args(args, dataset=dataset, making_datasets=1, binary_classifier=1, eps=eps,
-        #                                 net='alibi'))
-        #     main_work(
-        #         args=set_args(args, dataset=dataset, making_datasets=2, binary_classifier=2, eps=2, net='alibi'))
-
     if args.runAll:
-        # for dataset in ['mnist', 'cifar10', 'cifar100']:
-        for dataset in ['mnist', 'cifar10']:
+        for dataset in ['mnist', 'cifar10', 'cifar100']:
             args.dataset = dataset
-            # if dataset == 'mnist':
-            #     for eps in [4, 10]:
-            #         args.eps = eps
-            #         main_work(args)
-            #         torch.cuda.empty_cache()
-            # else:
-            #     for eps in [1, 2, 4, 10]:
-            #         args.eps = eps
-            #         main_work(args)
-            #         torch.cuda.empty_cache()
-            for eps in [1, 2, 4, 10]:
-                args.eps = eps
-                main_work(args)
-                torch.cuda.empty_cache()
+            if dataset == 'mnist':
+                for eps in [1, 2, 4, 10]:
+                    main_work(set_args(eps=eps, epoch=40))
+                    torch.cuda.empty_cache()
+            else:
+                for eps in [1, 2, 4, 10]:
+                    main_work(set_args(eps=eps, epoch=200))
+                    torch.cuda.empty_cache()
     else:
         main_work(args)
 
@@ -271,8 +205,6 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Auditing Label Private Deep Learning')  # argparse 命令行参数解析器
-    parser.add_argument('--Supplementary', default=True, type=bool)
-
     parser.add_argument('--runAll', default=False, type=bool)
     parser.add_argument('--resume', default=0, type=int, help='where to star resume'
                                                               '0: do not need to resume'
@@ -282,7 +214,7 @@ if __name__ == "__main__":
                                                               '4: all resume')
     parser.add_argument('--dataset', default='cifar10', type=str, help='dataset name')
     parser.add_argument('--net', default='alibi', type=str, help='label private deep learning to be audited')
-    parser.add_argument('--epoch', default=50, type=int, help='the epoch model trains')
+    parser.add_argument('--epoch', default=40, type=int, help='the epoch model trains')
     parser.add_argument('--eps', default=4, type=float, help='privacy parameter epsilon')
     parser.add_argument('--delta', default=1e-5, type=float, help='probability of failure')
     parser.add_argument('--trials', default=5000, type=float, help='The number of sample labels changed is trials')
